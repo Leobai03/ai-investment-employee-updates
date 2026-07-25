@@ -46,16 +46,16 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          $version = (Get-Content product/VERSION -Raw).Trim()
           python product/scripts/build_windows_delivery.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $archive = Join-Path $PWD "product\dist\AI投研数字员工_v${version}_Windows正式交付.zip"
+          $archive = Get-ChildItem (Join-Path $PWD "product\dist") -Filter "*_Windows*.zip" | Select-Object -First 1
+          if (-not $archive) { throw "Windows delivery archive was not built." }
           $deliveryRoot = Join-Path $env:RUNNER_TEMP "windows-delivery"
           New-Item -ItemType Directory -Force -Path $deliveryRoot | Out-Null
-          Expand-Archive -LiteralPath $archive -DestinationPath $deliveryRoot -Force
-          $installRoot = Join-Path $deliveryRoot "AI投研数字员工_Windows"
+          Expand-Archive -LiteralPath $archive.FullName -DestinationPath $deliveryRoot -Force
+          $installRoot = (Get-ChildItem $deliveryRoot -Directory | Select-Object -First 1).FullName
           if (-not (Test-Path -LiteralPath (Join-Path $installRoot "product\scripts\windows\update.ps1"))) {
-            throw "Windows 正式交付包解压结构不正确。"
+            throw "Windows delivery archive structure is invalid."
           }
           $failed = $false
           $files = @(Get-ChildItem (Join-Path $installRoot "product\scripts\windows\*.ps1")) + @(Get-ChildItem (Join-Path $installRoot "codex-plugin-marketplace\scripts\windows\*.ps1"))
@@ -74,15 +74,17 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          $installRoot = Join-Path (Join-Path $env:RUNNER_TEMP "windows-delivery") "AI投研数字员工_Windows"
+          $deliveryRoot = Join-Path $env:RUNNER_TEMP "windows-delivery"
+          $installRoot = (Get-ChildItem $deliveryRoot -Directory | Select-Object -First 1).FullName
           $fixtureRoot = Join-Path $env:RUNNER_TEMP "update-fixture"
           python -m venv (Join-Path $installRoot "product\.venv")
           & (Join-Path $installRoot "product\.venv\Scripts\python.exe") -m pip install -r (Join-Path $installRoot "product\requirements.txt")
           $currentVersion = [version](Get-Content product/VERSION -Raw).Trim()
           $targetVersion = "{0}.{1}.{2}" -f $currentVersion.Major, $currentVersion.Minor, ($currentVersion.Build + 1)
           python product/tests/windows_update_integration.py prepare --install-root $installRoot --output-dir $fixtureRoot --target-version $targetVersion
-          $archive = Join-Path $fixtureRoot "AI投研数字员工_Update_v$targetVersion.zip"
-          & (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe") -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $installRoot "product\scripts\windows\update.ps1") -PackagePath $archive
+          $archive = Get-ChildItem $fixtureRoot -Filter "*_Update_v$targetVersion.zip" | Select-Object -First 1
+          if (-not $archive) { throw "Synthetic update archive was not built." }
+          & (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe") -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $installRoot "product\scripts\windows\update.ps1") -PackagePath $archive.FullName
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python product/tests/windows_update_integration.py verify --install-root $installRoot --target-version $targetVersion
           & (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe") -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $installRoot "product\scripts\windows\stop.ps1")
