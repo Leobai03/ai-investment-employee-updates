@@ -80,12 +80,19 @@ def run(old_archive: Path, update_archive: Path) -> dict[str, object]:
         package_root = update_root / "AI投研数字员工_Update"
         manifest = verify_package(package_root)
         target_version = str(manifest["version"])
+        version_path = product / "VERSION"
+        previous_version = (
+            version_path.read_text(encoding="utf-8-sig").strip()
+            if version_path.exists()
+            else "0.10.0"
+        )
+        previous_init = (product / "app" / "__init__.py").read_text(encoding="utf-8")
         seed_owner_data(product)
 
         result = apply_update(
             package_root,
             install_root,
-            current_version="0.10.0",
+            current_version=previous_version,
         )
         assert (product / "VERSION").read_text(encoding="utf-8-sig").strip() == target_version
         assert_owner_data(product)
@@ -98,12 +105,15 @@ def run(old_archive: Path, update_archive: Path) -> dict[str, object]:
             connection.execute("UPDATE update_probe SET value='temporary-change'")
         rollback_update(backup_root, install_root, restore_userdata=True)
         assert_owner_data(product)
-        assert not (product / "VERSION").exists()
-        assert "0.10.0" in (product / "app" / "__init__.py").read_text(encoding="utf-8")
+        if previous_version == "0.10.0":
+            assert not version_path.exists()
+        else:
+            assert version_path.read_text(encoding="utf-8-sig").strip() == previous_version
+        assert (product / "app" / "__init__.py").read_text(encoding="utf-8") == previous_init
 
         return {
             "ok": True,
-            "from_version": "0.10.0",
+            "from_version": previous_version,
             "to_version": target_version,
             "owner_data_preserved": True,
             "rollback_verified": True,

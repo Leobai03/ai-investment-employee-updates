@@ -31,6 +31,7 @@ from .database import (
     add_watchlist,
     attach_job_run_conversation,
     claim_due_job,
+    conversation_has_active_task,
     create_conversation,
     create_database_backup,
     create_job,
@@ -38,6 +39,7 @@ from .database import (
     create_research_task,
     create_hypothesis,
     delete_hypothesis,
+    delete_conversation,
     delete_job,
     delete_report,
     delete_watchlist,
@@ -54,6 +56,7 @@ from .database import (
     get_or_add_watchlist,
     get_watchlist,
     init_db,
+    increment_job_run_attempt,
     list_conversations,
     list_database_backups,
     list_due_jobs,
@@ -125,6 +128,11 @@ background_tasks: set[asyncio.Task] = set()
 running_research_tasks: dict[str, asyncio.Task] = {}
 conversation_locks: dict[str, asyncio.Lock] = {}
 backup_state: dict[str, str] = {"last_success_at": "", "last_error": ""}
+scheduler_state: dict[str, str | bool] = {
+    "running": False,
+    "last_checked_at": "",
+    "last_error": "",
+}
 APP_VERSION = "0.11.3"
 
 
@@ -465,18 +473,29 @@ async def _execute_job(job_id: int, *, scheduled: bool = False) -> dict | None:
                 "engine": job.get("engine", "auto"),
             },
         )
-        report = await _run_research(
-            report_type,
-            title,
-            job["prompt"],
-            prompt,
-            "balanced",
-            conversation_id=conversation["id"],
-            job_run_id=run_id,
-            source="scheduler",
-            engine=job.get("engine", "auto"),
-            watchlist_id=job.get("watchlist_id"),
-        )
+        max_attempts = 2 if scheduled else 1
+        attempt = 1
+        while True:
+            try:
+                report = await _run_research(
+                    report_type,
+                    title,
+                    job["prompt"],
+                    prompt,
+                    "balanced",
+                    conversation_id=conversation["id"],
+                    job_run_id=run_id,
+                    source="scheduler",
+                    engine=job.get("engine", "auto"),
+                    watchlist_id=job.get("watchlist_id"),
+                )
+                break
+            except Exception:
+                if attempt >= max_attempts:
+                    raise
+                attempt += 1
+                increment_job_run_attempt(run_id)
+                await asyncio.sleep(0 if DEMO_MODE else 30)
         add_message(
             conversation["id"],
             "assistant",
@@ -494,29 +513,36 @@ async def _execute_job(job_id: int, *, scheduled: bool = False) -> dict | None:
         return report
     except Exception as exc:
         message = _friendly_error(exc)
-        if conversation:
-            add_message(
-                conversation["id"],
-                "assistant",
-                f"本次任务执行失败：{message}",
-                metadata={"job_id": job_id, "job_run_id": run_id, "error": True},
-            )
         if run_id is not None:
             finish_job_run(run_id, status="failed", error=message)
+        if conversation:
+            delete_conversation(conversation["id"])
         return None
     finally:
         running_jobs.discard(job_id)
 
 
 async def _scheduler() -> None:
-    while True:
-        for job in list_due_jobs():
-            if job["id"] in running_jobs:
-                continue
-            task = asyncio.create_task(_execute_job(job["id"], scheduled=True))
-            background_tasks.add(task)
-            task.add_done_callback(background_tasks.discard)
-        await asyncio.sleep(15)
+    scheduler_state["running"] = True
+    try:
+        while True:
+            try:
+                due_jobs = list_due_jobs()
+                scheduler_state["last_checked_at"] = (
+                    datetime.now().astimezone().isoformat(timespec="seconds")
+                )
+                scheduler_state["last_error"] = ""
+                for job in due_jobs:
+                    if job["id"] in running_jobs:
+                        continue
+                    task = asyncio.create_task(_execute_job(job["id"], scheduled=True))
+                    background_tasks.add(task)
+                    task.add_done_callback(background_tasks.discard)
+            except Exception as exc:
+                scheduler_state["last_error"] = _friendly_error(exc)
+            await asyncio.sleep(15)
+    finally:
+        scheduler_state["running"] = False
 
 
 def _track_background(coro, *, task_id: str | None = None) -> None:
@@ -731,30 +757,12 @@ async def _execute_research_task(task_id: str) -> None:
         finish_research_task(task_id, status="completed", report_id=report["id"])
     except asyncio.CancelledError:
         finish_research_task(task_id, status="cancelled", error="用户已取消。")
-        if task and task["task_type"] == "conversation":
-            conversation_id = str(task["request"].get("conversation_id") or "")
-            if conversation_id and get_conversation(conversation_id):
-                add_message(
-                    conversation_id,
-                    "assistant",
-                    "本次后台对话已取消。",
-                    metadata={"cancelled": True},
-                )
         raise
     except Exception as exc:
         if isinstance(exc, HTTPException):
             message = str(exc.detail)
         else:
             message = _friendly_error(exc)
-        if task and task["task_type"] == "conversation":
-            conversation_id = str(task["request"].get("conversation_id") or "")
-            if conversation_id and get_conversation(conversation_id):
-                add_message(
-                    conversation_id,
-                    "assistant",
-                    f"本次后台对话失败：{message}",
-                    metadata={"error": True, "engine": task["request"].get("engine", "auto")},
-                )
         finish_research_task(task_id, status="failed", error=message)
 
 
@@ -909,6 +917,7 @@ async def health() -> dict:
         "codex_archive": codex_archive.status(),
         "active_jobs": sum(1 for job in jobs if job["enabled"]),
         "running_jobs": len(running_jobs),
+        "scheduler": dict(scheduler_state),
         "background_research": {
             "running": sum(
                 1 for task in list_research_tasks(100) if task["status"] in {"queued", "running"}
@@ -1229,6 +1238,15 @@ async def conversation_get(conversation_id: str) -> dict:
     if not conversation:
         raise HTTPException(status_code=404, detail="对话不存在。")
     return conversation
+
+
+@app.delete("/api/conversations/{conversation_id}")
+async def conversation_delete(conversation_id: str) -> dict:
+    if conversation_has_active_task(conversation_id):
+        raise HTTPException(status_code=409, detail="这条对话仍有任务在执行，请先等待完成或取消任务。")
+    if not delete_conversation(conversation_id):
+        raise HTTPException(status_code=404, detail="对话不存在。")
+    return {"deleted": True}
 
 
 @app.get("/api/conversations/{conversation_id}/download")

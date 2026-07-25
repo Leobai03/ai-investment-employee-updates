@@ -550,18 +550,40 @@ input:focus, select:focus, textarea:focus { border-color: #78968b; box-shadow: 0
 .conversation-filters button.active { background: var(--green); color: #fff; }
 .conversation-list { min-height: 0; flex: 1; display: grid; align-content: start; gap: 6px; overflow-y: auto; }
 .conversation-row {
+  position: relative;
   width: 100%;
-  padding: 12px;
-  display: grid;
-  gap: 6px;
+  display: block;
   border: 1px solid transparent;
   border-radius: 11px;
+  background: transparent;
+}
+.conversation-row:hover { background: rgba(255,255,255,.65); }
+.conversation-row.active { border-color: #c8d7cf; background: #fff; box-shadow: 0 8px 20px rgba(34,52,46,.06); }
+.conversation-open {
+  width: 100%;
+  padding: 12px 48px 12px 12px;
+  display: grid;
+  gap: 6px;
+  border: 0;
   background: transparent;
   cursor: pointer;
   text-align: left;
 }
-.conversation-row:hover { background: rgba(255,255,255,.65); }
-.conversation-row.active { border-color: #c8d7cf; background: #fff; box-shadow: 0 8px 20px rgba(34,52,46,.06); }
+.conversation-delete {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #a25048;
+  cursor: pointer;
+  font-size: 8px;
+  opacity: .55;
+}
+.conversation-row:hover .conversation-delete,
+.conversation-delete:focus { opacity: 1; }
 .conversation-row-top { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .conversation-row-top strong { overflow: hidden; font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
 .conversation-row-top i { flex: 0 0 auto; color: var(--green-2); font-size: 8px; font-style: normal; }

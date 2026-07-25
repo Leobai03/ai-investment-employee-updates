@@ -684,13 +684,19 @@ function renderConversationList() {
     container.innerHTML = `<div class="conversation-empty">还没有符合条件的对话。</div>`;
   } else {
     container.innerHTML = state.conversations.map((item) => `
-      <button class="conversation-row ${state.currentConversation?.id === item.id ? "active" : ""}" data-conversation-id="${item.id}">
-        <span class="conversation-row-top"><strong>${escapeHtml(item.title)}</strong><i>${sourceNames[item.source] || item.source}</i></span>
-        <span class="conversation-preview">${escapeHtml(plainSnippet(item.preview, 54) || "尚无消息")}</span>
-        <span class="conversation-meta">${formatDate(item.updated_at)} · ${item.message_count} 条</span>
-      </button>`).join("");
+      <div class="conversation-row ${state.currentConversation?.id === item.id ? "active" : ""}">
+        <button class="conversation-open" data-conversation-id="${item.id}">
+          <span class="conversation-row-top"><strong>${escapeHtml(item.title)}</strong><i>${sourceNames[item.source] || item.source}</i></span>
+          <span class="conversation-preview">${escapeHtml(plainSnippet(item.preview, 54) || "尚无消息")}</span>
+          <span class="conversation-meta">${formatDate(item.updated_at)} · ${item.message_count} 条</span>
+        </button>
+        <button class="conversation-delete" data-delete-conversation="${item.id}" title="删除对话">删除</button>
+      </div>`).join("");
     $$("[data-conversation-id]", container).forEach((button) =>
       button.addEventListener("click", () => openConversation(button.dataset.conversationId))
+    );
+    $$("[data-delete-conversation]", container).forEach((button) =>
+      button.addEventListener("click", () => deleteConversationRecord(button.dataset.deleteConversation))
     );
   }
   $("#loadMoreConversations").classList.toggle("hidden", !state.conversationHasMore);
@@ -702,10 +708,12 @@ function renderConversation() {
     $("#chatTitle").textContent = "新对话";
     $("#chatSource").textContent = "网页对话";
     $("#chatMessages").innerHTML = welcomeHtml();
+    $("#deleteConversation").disabled = true;
     return;
   }
   $("#chatTitle").textContent = conversation.title;
   $("#chatSource").textContent = sourceNames[conversation.source] || conversation.source;
+  $("#deleteConversation").disabled = false;
   $("#chatMessages").innerHTML = conversationThreadHtml(conversation, true);
   const area = $("#chatMessages");
   requestAnimationFrame(() => { area.scrollTop = area.scrollHeight; });
@@ -808,6 +816,26 @@ async function openConversation(id) {
     renderConversation();
     bindDynamicExamples();
   } catch (error) { toast(error.message, "error"); }
+}
+
+async function deleteConversationRecord(conversationId) {
+  if (!confirm("确认删除这条连续对话？本机对应的对话 Markdown 也会一起删除。")) return;
+  try {
+    await api(`/api/conversations/${encodeURIComponent(conversationId)}`, { method: "DELETE" });
+    const deletedCurrent = state.currentConversation?.id === conversationId;
+    if (deletedCurrent) state.currentConversation = null;
+    if (state.companyConversation?.id === conversationId) state.companyConversation = null;
+    await refreshConversations(true);
+    if (deletedCurrent && state.conversations.length) {
+      await openConversation(state.conversations[0].id);
+    } else {
+      renderConversation();
+    }
+    if (state.currentCompany) await refreshCompanyWorkspace();
+    toast("连续对话已删除");
+  } catch (error) {
+    toast(error.message, "error");
+  }
 }
 
 function renderJobs() {
@@ -1445,6 +1473,9 @@ function bindEvents() {
   $("#downloadConversation").addEventListener("click", () => {
     if (!state.currentConversation) return toast("请先选择一条对话", "error");
     downloadConversationFile(state.currentConversation.id, $("#conversationExportFormat").value);
+  });
+  $("#deleteConversation").addEventListener("click", () => {
+    if (state.currentConversation) deleteConversationRecord(state.currentConversation.id);
   });
   $("#openCodex").addEventListener("click", async () => {
     try {
