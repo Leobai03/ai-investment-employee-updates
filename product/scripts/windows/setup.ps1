@@ -28,9 +28,9 @@ function Install-WingetPackage {
 function Test-ChatGPTInstalled {
     try {
         $packages = @(Get-AppxPackage -ErrorAction Stop | Where-Object {
-            $_.Name -match "ChatGPT" -or
-            $_.PackageFullName -match "9PLM9XGG6VKS|ChatGPT" -or
-            $_.PackageFamilyName -match "9PLM9XGG6VKS|ChatGPT"
+            $_.Name -match "ChatGPT|OpenAI\.Codex" -or
+            $_.PackageFullName -match "9PLM9XGG6VKS|ChatGPT|OpenAI\.Codex" -or
+            $_.PackageFamilyName -match "9PLM9XGG6VKS|ChatGPT|OpenAI\.Codex"
         })
         return $packages.Count -gt 0
     } catch {
@@ -47,7 +47,7 @@ if (Test-ChatGPTInstalled) {
         Install-WingetPackage -Id "9PLM9XGG6VKS" -Source "msstore"
     } catch {
         if (Test-ChatGPTInstalled) {
-            Write-Warning "Microsoft Store 返回了安装异常，但已检测到 ChatGPT Windows 客户端，继续首次配置。"
+            Write-Warning "Microsoft Store 返回了安装异常，但已检测到 OpenAI 客户端，继续首次配置。"
         } else {
             throw
         }
@@ -100,7 +100,13 @@ if ($LASTEXITCODE -ne 0) {
     throw "当前 Codex CLI 没有可用的 app-server。请更新 Codex 后重试。"
 }
 
-$loginOutput = (& $codex login status 2>&1 | Out-String)
+$previousErrorActionPreference = $ErrorActionPreference
+try {
+    $ErrorActionPreference = "Continue"
+    $loginOutput = (& $codex login status 2>&1 | Out-String)
+} finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
 if ($loginOutput -match "Logged in") {
     Write-Host "Codex 已使用账号登录。" -ForegroundColor Green
 } else {

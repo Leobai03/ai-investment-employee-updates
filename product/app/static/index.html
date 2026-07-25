@@ -481,34 +481,25 @@
             </div>
             <label>任务名称<input name="name" value="我的每日研究" required maxlength="80"></label>
             <div class="two-fields">
-              <label>研究内容<select name="job_type">
+              <label>研究内容<select name="job_type" id="newJobType">
                 <option value="hourly_news">消息面扫描</option>
                 <option value="daily_brief" selected>每日市场简报</option>
                 <option value="weekly_review">基本面复盘</option>
               </select></label>
-              <label>运行方式<select name="frequency" id="newJobFrequency">
-                <option value="interval">每隔一段时间</option>
+              <label id="newFrequencyField">运行方式<select name="frequency" id="newJobFrequency">
                 <option value="daily" selected>每天</option>
                 <option value="weekly">每周</option>
-                <option value="monthly">每月</option>
-                <option value="yearly">每年</option>
               </select></label>
-            </div>
-            <div class="two-fields">
-              <label>每隔多久<select name="interval_minutes">
+              <label id="newIntervalField" class="hidden">每隔多久<select name="interval_minutes">
                 <option value="60">每 1 小时</option>
-                <option value="120" selected>每 2 小时</option>
+                <option value="120">每 2 小时</option>
                 <option value="240">每 4 小时</option>
                 <option value="720">每 12 小时</option>
               </select></label>
-              <label>固定时间<input type="time" name="time_of_day" value="08:00"></label>
             </div>
             <div class="two-fields">
-              <label>每月几号<input type="number" name="day_of_month" min="1" max="28" value="1"></label>
-              <label>每年几月<input type="number" name="month_of_year" min="1" max="12" value="1"></label>
-            </div>
-            <div class="two-fields">
-              <label>哪一天<select name="weekday">
+              <label id="newTimeField">执行时间<input type="time" name="time_of_day" value="08:00"></label>
+              <label id="newWeekdayField">执行日<select name="weekday">
                 <option value="-1" selected>每天</option>
                 <option value="0">周一</option><option value="1">周二</option>
                 <option value="2">周三</option><option value="3">周四</option>
@@ -521,14 +512,11 @@
                 <option value="api">OpenAI API</option>
               </select></label>
             </div>
-            <div class="two-fields">
-              <label>活跃开始<input type="time" name="active_start" value="07:00"></label>
-              <label>活跃结束<input type="time" name="active_end" value="23:00"></label>
-            </div>
             <fieldset class="framework-picker">
               <legend>加入公开方法视角</legend>
               <label><input type="checkbox" name="frameworks" value="段永平公开方法" checked> 段永平公开方法</label>
               <label><input type="checkbox" name="frameworks" value="但斌公开方法" checked> 但斌公开方法</label>
+              <label><input type="checkbox" name="frameworks" value="葛卫东公开方法"> 葛卫东公开方法</label>
             </fieldset>
             <label>任务说明<textarea name="prompt" rows="4">只汇报新增变化，区分事实、分析、反方证据和待核验信息。</textarea></label>
             <label class="builder-enable"><input type="checkbox" name="enabled" checked> 创建后立即启用</label>
@@ -544,7 +532,7 @@
         </div>
         <div class="task-cost-note">
           <span>成本提醒</span>
-          <p>Codex 引擎会消耗订阅额度，API 引擎会产生 API 费用。建议先限定 07:00—23:00，观察一周后再决定是否全天运行。</p>
+          <p>Codex 引擎会消耗订阅额度，API 引擎会产生 API 费用。建议先设置每天或每周一次，观察结果后再调整。</p>
         </div>
       </section>
 

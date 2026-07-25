@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 EngineChoice = Literal["auto", "codex", "api"]
@@ -93,6 +93,25 @@ class ScheduledJobCreate(BaseModel):
     @classmethod
     def clean_frameworks(cls, value: list[str]) -> list[str]:
         return list(dict.fromkeys(item.strip() for item in value if item.strip()))
+
+    @model_validator(mode="after")
+    def normalize_schedule(self) -> "ScheduledJobCreate":
+        if self.job_type == "hourly_news":
+            allowed = {60, 120, 240, 720}
+            if self.interval_minutes not in allowed:
+                raise ValueError("消息面扫描只支持每 1、2、4 或 12 小时。")
+            self.frequency = "interval"
+            self.time_of_day = "08:00"
+            self.weekday = -1
+            return self
+        if self.frequency not in {"daily", "weekly"}:
+            self.frequency = "daily"
+        self.interval_minutes = 1440
+        if self.frequency == "daily":
+            self.weekday = -1
+        elif self.weekday < 0:
+            self.weekday = 0
+        return self
 
 
 class ScheduledJobUpdate(ScheduledJobCreate):

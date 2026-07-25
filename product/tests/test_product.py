@@ -52,7 +52,7 @@ def test_health_and_default_profile() -> None:
         health = client.get("/api/health")
         assert health.status_code == 200
         assert health.json()["demo_mode"] is True
-        assert health.json()["version"] == "0.11.2"
+        assert health.json()["version"] == "0.11.3"
         assert "platform" in health.json()
         assert set(health.json()["engines"]) == {"default", "codex", "api", "demo"}
         profile = client.get("/api/profile").json()
@@ -78,7 +78,7 @@ def test_health_and_default_profile() -> None:
         assert next(job for job in jobs if job["job_type"] == "daily_brief")["enabled"] is True
         updates = client.get("/api/updates/status")
         assert updates.status_code == 200
-        assert updates.json()["current_version"] == "0.11.2"
+        assert updates.json()["current_version"] == "0.11.3"
         assert updates.json()["repository"]
         assert client.post("/api/updates/install").status_code == 403
 
@@ -104,7 +104,7 @@ def test_conversation_update_phrase_launches_safe_updater(monkeypatch) -> None:
             "state": "available",
             "supported": True,
             "current_version": "0.11.0",
-            "latest_version": "0.11.2",
+            "latest_version": "0.11.3",
             "update_available": True,
         },
     )
@@ -178,7 +178,12 @@ def test_windows_scripts_keep_local_security_boundary() -> None:
         path.read_text(encoding="utf-8")
         for path in sorted((PRODUCT_ROOT / "scripts" / "windows").glob("*.ps1"))
     )
-    assert '--host", "127.0.0.1"' in combined
+    assert "AI_RESEARCH_HOST" in combined
+    assert '$listenHost = "127.0.0.1"' in combined
+    assert "AI_RESEARCH_LAN_TOKEN" in (PRODUCT_ROOT / ".env.example").read_text(encoding="utf-8")
+    main_source = (PRODUCT_ROOT / "app" / "main.py").read_text(encoding="utf-8")
+    assert "lan_access_guard" in main_source
+    assert "ai_research_lan_token" in main_source
     assert "Invoke-Expression" not in combined
     assert "EncodedCommand" not in combined
     assert "Remove-Item -Recurse" not in combined

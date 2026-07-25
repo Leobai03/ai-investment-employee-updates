@@ -44,6 +44,7 @@ load_local_env()
 
 APP_HOST = os.getenv("AI_RESEARCH_HOST", "127.0.0.1")
 APP_PORT = int(os.getenv("AI_RESEARCH_PORT", "8765"))
+LAN_ACCESS_TOKEN = os.getenv("AI_RESEARCH_LAN_TOKEN", "").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.6")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 DEMO_MODE = os.getenv("AI_RESEARCH_DEMO", "0") == "1"

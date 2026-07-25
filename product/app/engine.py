@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable, Callable
 from typing import Literal
 
 from .codex_engine import CodexResearchClient, CodexUnavailable
@@ -8,6 +10,16 @@ from .research import ResearchClient, ResearchResult, ResearchUnavailable
 
 
 EngineName = Literal["auto", "codex", "api"]
+_TRANSIENT_CODEX_ERRORS = (
+    "stream disconnected",
+    "transport error",
+    "error decoding response body",
+    "connection reset",
+    "connection closed",
+    "temporarily unavailable",
+    "service unavailable",
+    "503",
+)
 
 
 class DualResearchClient:
@@ -60,21 +72,25 @@ class DualResearchClient:
         if selected == "api":
             return await self.api.run(instructions, prompt, depth=depth)
         if selected == "codex":
-            return await self.codex.run(
-                instructions,
-                prompt,
-                depth=depth,
-                use_web=use_web,
+            return await self._with_codex_retry(
+                lambda: self.codex.run(
+                    instructions,
+                    prompt,
+                    depth=depth,
+                    use_web=use_web,
+                )
             )
         codex_error: Exception | None = None
         status = await self.codex.status()
         if status.available and status.logged_in and status.auth_type == "chatgpt":
             try:
-                return await self.codex.run(
-                    instructions,
-                    prompt,
-                    depth=depth,
-                    use_web=use_web,
+                return await self._with_codex_retry(
+                    lambda: self.codex.run(
+                        instructions,
+                        prompt,
+                        depth=depth,
+                        use_web=use_web,
+                    )
                 )
             except (CodexUnavailable, OSError) as exc:
                 codex_error = exc
@@ -102,15 +118,19 @@ class DualResearchClient:
         if selected == "api":
             return await self.api.chat(instructions, messages, use_web=use_web)
         if selected == "codex":
-            return await self.codex.chat(instructions, messages, use_web=use_web)
+            return await self._with_codex_retry(
+                lambda: self.codex.chat(instructions, messages, use_web=use_web)
+            )
         codex_error: Exception | None = None
         status = await self.codex.status()
         if status.available and status.logged_in and status.auth_type == "chatgpt":
             try:
-                return await self.codex.chat(
-                    instructions,
-                    messages,
-                    use_web=use_web,
+                return await self._with_codex_retry(
+                    lambda: self.codex.chat(
+                        instructions,
+                        messages,
+                        use_web=use_web,
+                    )
                 )
             except (CodexUnavailable, OSError) as exc:
                 codex_error = exc
@@ -128,3 +148,22 @@ class DualResearchClient:
     def _normalize(engine: str) -> EngineName:
         value = (engine or "auto").strip().lower()
         return value if value in {"auto", "codex", "api"} else "auto"  # type: ignore[return-value]
+
+    async def _with_codex_retry(
+        self,
+        operation: Callable[[], Awaitable[ResearchResult]],
+    ) -> ResearchResult:
+        for attempt in range(2):
+            try:
+                return await operation()
+            except (CodexUnavailable, OSError) as exc:
+                if attempt == 0 and self._is_transient_codex_error(exc):
+                    await asyncio.sleep(1.5)
+                    continue
+                raise
+        raise CodexUnavailable("Codex 临时连接失败。")
+
+    @staticmethod
+    def _is_transient_codex_error(exc: Exception) -> bool:
+        message = str(exc).lower()
+        return any(marker in message for marker in _TRANSIENT_CODEX_ERRORS)

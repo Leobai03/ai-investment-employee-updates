@@ -23,6 +23,7 @@ WINDOWS_REQUIRED = {
     "Windows使用说明.md",
     "自动更新与GitHub发布说明.md",
     "Windows_首次配置.cmd",
+    "打开AI投研驾驶舱.cmd",
     "Windows_启动研究台.cmd",
     "Windows_停止研究台.cmd",
     "Windows_打开研究台.cmd",

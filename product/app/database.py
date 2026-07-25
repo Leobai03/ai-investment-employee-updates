@@ -418,6 +418,34 @@ def init_db() -> None:
                 ("v06_defaults_applied", "1", _now()),
             )
         conn.execute(
+            """UPDATE scheduled_jobs
+               SET frequency='interval',
+                   interval_minutes=CASE
+                       WHEN interval_minutes IN (60, 120, 240, 720) THEN interval_minutes
+                       ELSE 120
+                   END,
+                   time_of_day='08:00',
+                   weekday=-1,
+                   updated_at=?
+               WHERE job_type='hourly_news'
+                 AND (frequency!='interval'
+                      OR interval_minutes NOT IN (60, 120, 240, 720)
+                      OR weekday!=-1)""",
+            (_now(),),
+        )
+        conn.execute(
+            """UPDATE scheduled_jobs
+               SET frequency=CASE WHEN frequency='weekly' THEN 'weekly' ELSE 'daily' END,
+                   interval_minutes=1440,
+                   weekday=CASE WHEN frequency='weekly' AND weekday BETWEEN 0 AND 6 THEN weekday ELSE -1 END,
+                   updated_at=?
+               WHERE job_type!='hourly_news'
+                 AND (frequency NOT IN ('daily', 'weekly')
+                      OR interval_minutes!=1440
+                      OR (frequency!='weekly' AND weekday!=-1))""",
+            (_now(),),
+        )
+        conn.execute(
             """UPDATE research_tasks
                SET status='failed', error='研究台重启，原后台任务已中止，请重新发起。', finished_at=?
                WHERE status IN ('queued', 'running')""",
