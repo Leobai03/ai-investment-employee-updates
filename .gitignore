@@ -1,0 +1,25 @@
+.DS_Store
+deliverables/
+demo-workspace/
+preview/
+qa/
+source/
+work/
+
+product/.env
+product/.venv/
+product/.pytest_cache/
+product/data/*.db*
+product/dist/
+product/runtime/
+product/**/__pycache__/
+product/**/*.pyc
+
+# 老板长期资料永远不进入 Git。只保留插件所需的通用 .system 程序脚本。
+product/投研数字员工/*
+!product/投研数字员工/.system/
+!product/投研数字员工/.system/**
+
+codex-plugin-marketplace/**/__pycache__/
+codex-plugin-marketplace/**/*.pyc
+

@@ -1,0 +1,104 @@
+name: Test and publish update
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            product/requirements.txt
+            product/requirements-dev.txt
+      - name: Install test dependencies
+        working-directory: product
+        run: python -m pip install -r requirements-dev.txt
+      - name: Compile Python
+        working-directory: product
+        run: python -m compileall -q app scripts
+      - name: Run tests
+        working-directory: product
+        run: python -m pytest -q
+      - name: Check browser JavaScript
+        working-directory: product
+        run: node --check app/static/app.js
+      - name: Parse Windows PowerShell scripts
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $failed = $false
+          $files = @(Get-ChildItem product/scripts/windows/*.ps1) + @(Get-ChildItem codex-plugin-marketplace/scripts/windows/*.ps1)
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $failed = $true
+              Write-Host "FAIL $($file.FullName)"
+              $errors | ForEach-Object { Write-Host $_.Message }
+            }
+          }
+          if ($failed) { exit 1 }
+      - name: Native Windows update preserves owner data
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $installRoot = Join-Path $env:RUNNER_TEMP "AI投研数字员工_Windows"
+          $fixtureRoot = Join-Path $env:RUNNER_TEMP "update-fixture"
+          New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
+          Copy-Item product (Join-Path $installRoot "product") -Recurse
+          Copy-Item codex-plugin-marketplace (Join-Path $installRoot "codex-plugin-marketplace") -Recurse
+          python -m venv (Join-Path $installRoot "product\.venv")
+          & (Join-Path $installRoot "product\.venv\Scripts\python.exe") -m pip install -r (Join-Path $installRoot "product\requirements.txt")
+          $currentVersion = [version](Get-Content product/VERSION -Raw).Trim()
+          $targetVersion = "{0}.{1}.{2}" -f $currentVersion.Major, $currentVersion.Minor, ($currentVersion.Build + 1)
+          python product/tests/windows_update_integration.py prepare --install-root $installRoot --output-dir $fixtureRoot --target-version $targetVersion
+          $archive = Join-Path $fixtureRoot "AI投研数字员工_Update_v$targetVersion.zip"
+          & (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe") -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $installRoot "product\scripts\windows\update.ps1") -PackagePath $archive
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python product/tests/windows_update_integration.py verify --install-root $installRoot --target-version $targetVersion
+          & (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe") -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $installRoot "product\scripts\windows\stop.ps1")
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Verify version and build update bundle
+        working-directory: product
+        run: python scripts/release_check.py --tag "${GITHUB_REF_NAME}"
+      - name: Publish immutable release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            "product/dist/AI投研数字员工_Update_${GITHUB_REF_NAME}.zip" \
+            "product/dist/AI投研数字员工_Update_${GITHUB_REF_NAME}.zip.sha256" \
+            --title "AI 投研数字员工 ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --verify-tag

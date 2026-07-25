@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI 投研数字员工"
+  short_description: "后台研究、公开方法框架与网页/Codex 共用本机记忆的个人投研助理"
+  default_prompt: "使用 $ai-investment-employee 初始化我的投研工作区，并引导我完成第一次配置。"

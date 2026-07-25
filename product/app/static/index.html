@@ -1,0 +1,719 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>天策 AI 投研数字员工</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">策</div>
+        <div>
+          <strong>个人投资研究台</strong>
+          <span>AI Research Desk</span>
+        </div>
+      </div>
+
+      <nav class="nav-list" aria-label="主导航">
+        <button class="nav-item" data-page="overview">
+          <span class="nav-icon">⌂</span><span>今日总览</span>
+        </button>
+        <button class="nav-item active" data-page="markets">
+          <span class="nav-icon">⌁</span><span>我的市场</span>
+        </button>
+        <button class="nav-item" data-page="companies">
+          <span class="nav-icon">▦</span><span>我的公司</span>
+        </button>
+        <button class="nav-item" data-page="ask">
+          <span class="nav-icon">✦</span><span>连续对话</span>
+        </button>
+        <button class="nav-item" data-page="tasks">
+          <span class="nav-icon">◴</span><span>定时汇报</span>
+        </button>
+        <button class="nav-item" data-page="frameworks">
+          <span class="nav-icon">◇</span><span>公开框架</span>
+        </button>
+        <button class="nav-item" data-page="history">
+          <span class="nav-icon">◷</span><span>研究档案</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <button class="nav-item" data-page="settings">
+          <span class="nav-icon">⚙</span><span>老板偏好</span>
+        </button>
+        <div class="system-card">
+          <div class="system-row">
+            <span class="status-dot" id="statusDot"></span>
+            <strong id="statusText">正在检查</strong>
+          </div>
+          <p id="statusDetail">检查研究引擎配置…</p>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <button class="mobile-menu" id="mobileMenu" aria-label="打开菜单">☰</button>
+        <div>
+          <span class="eyebrow" id="pageEyebrow">PRIVATE RESEARCH DESK</span>
+          <h1 id="pageTitle">早上好，老板</h1>
+        </div>
+        <div class="top-actions">
+          <button class="background-task-button" id="backgroundTaskButton" type="button">
+            <span class="background-pulse"></span>
+            <span id="backgroundTaskText">后台任务 0</span>
+          </button>
+          <div class="privacy-badge"><span>●</span> 本机保存</div>
+          <button class="avatar" data-page="settings" aria-label="打开老板偏好">老板</button>
+        </div>
+      </header>
+
+      <section class="page" id="page-overview">
+        <div class="setup-banner hidden" id="setupBanner">
+          <div>
+            <strong>研究引擎还差最后一步</strong>
+            <p>先登录 Codex 使用 ChatGPT 订阅；也可以配置 API Key 作为备用引擎。</p>
+          </div>
+          <button class="btn btn-light" data-page="settings">查看说明</button>
+        </div>
+
+        <div class="hero-grid">
+          <article class="hero-card">
+            <div class="hero-kicker">TODAY'S FOCUS</div>
+            <h2>先看世界，<br>再落到你的公司。</h2>
+            <p>系统会按“全球 → 市场 → 板块 → 公司”筛选今天真正与你有关的信息。</p>
+            <div class="hero-actions">
+              <button class="btn btn-primary" id="heroDailyBtn">生成今日简报 <span>→</span></button>
+              <button class="btn btn-ghost" data-page="ask">问一个问题</button>
+            </div>
+            <div class="hero-orbit orbit-one"></div>
+            <div class="hero-orbit orbit-two"></div>
+          </article>
+
+          <div class="metric-stack">
+            <article class="metric-card">
+              <div class="metric-label">重点市场</div>
+              <div class="metric-value" id="primaryMarketCount">2</div>
+              <div class="metric-detail" id="primaryMarketsText">A股 · 港股</div>
+            </article>
+            <article class="metric-card accent">
+              <div class="metric-label">自选公司</div>
+              <div class="metric-value" id="watchlistCount">0</div>
+              <div class="metric-detail">持续追踪的研究对象</div>
+            </article>
+            <article class="metric-card">
+              <div class="metric-label">对话档案</div>
+              <div class="metric-value" id="conversationCount">0</div>
+              <div class="metric-detail">网页 · Codex · 定时任务</div>
+            </article>
+            <article class="metric-card">
+              <div class="metric-label">自动任务</div>
+              <div class="metric-value" id="activeJobCount">0</div>
+              <div class="metric-detail">当前启用的定时汇报</div>
+            </article>
+          </div>
+        </div>
+
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">RECENT RESEARCH</span>
+            <h2>最近研究</h2>
+          </div>
+          <button class="text-button" data-page="history">查看全部 →</button>
+        </div>
+        <div class="report-grid" id="recentReports"></div>
+
+        <div class="principle-strip">
+          <div class="principle-index">01</div>
+          <div>
+            <span>研究纪律</span>
+            <strong>不知道，就明确说不知道；没有来源，就不把它写成事实。</strong>
+          </div>
+          <div class="principle-line"></div>
+        </div>
+      </section>
+
+      <section class="page active" id="page-markets">
+        <div class="workbench-grid">
+          <div class="workbench-main">
+            <div class="section-heading compact">
+              <div>
+                <span class="eyebrow">GLOBAL → A/H</span>
+                <h2>每日市场简报</h2>
+              </div>
+              <span class="date-chip" id="todayDate"></span>
+            </div>
+            <article class="form-card large">
+              <div class="step-label"><span>01</span> 系统已经知道</div>
+              <div class="known-context" id="marketContext"></div>
+              <label class="field-label" for="dailyContext">今天有没有特别想看的内容？<small>选填</small></label>
+              <textarea id="dailyContext" rows="5" placeholder="例如：重点看看科技板块、腾讯和阿里；或者关注昨晚美股变化对港股的影响。"></textarea>
+              <div class="form-footer">
+                <p>点击后会放到后台运行。你可以继续看公司、聊天或改任务，完成后右下角会提醒。</p>
+                <div class="action-cluster">
+                  <label class="engine-picker">研究引擎
+                    <select id="dailyEngine">
+                      <option value="auto">Codex 订阅优先（默认）</option>
+                      <option value="codex">Codex 订阅</option>
+                      <option value="api">OpenAI API</option>
+                    </select>
+                  </label>
+                  <button class="btn btn-primary" id="dailyBtn">开始生成 <span>→</span></button>
+                </div>
+              </div>
+            </article>
+          </div>
+          <aside class="workbench-side">
+            <div class="side-card">
+              <span class="eyebrow">OUTPUT</span>
+              <h3>一份简报只回答 6 件事</h3>
+              <ol class="number-list">
+                <li>全球发生了什么</li>
+                <li>对 A 股/港股的影响</li>
+                <li>哪些板块相关</li>
+                <li>与你的公司什么关系</li>
+                <li>相反证据和风险</li>
+                <li>今天继续跟踪什么</li>
+              </ol>
+            </div>
+            <div class="boundary-card">
+              <span>边界</span>
+              <p>只做信息整理和研究辅助。不预测涨跌，不给买卖指令，不自动交易。</p>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="page" id="page-companies">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">COMPANY NOTEBOOK</span>
+            <h2>我的公司</h2>
+          </div>
+          <button class="btn btn-primary add-company-button" id="openWatchlistForm">＋ 添加自选公司</button>
+        </div>
+
+        <form class="inline-add-card hidden" id="watchlistForm">
+          <div class="form-grid four">
+            <label>公司名称<input id="watchName" required placeholder="例如：腾讯控股"></label>
+            <label>股票代码<input id="watchSymbol" required placeholder="例如：0700"></label>
+            <label>市场<select id="watchMarket"><option>A股</option><option selected>港股</option><option>美股</option><option>日本</option><option>韩国</option><option>其他</option></select></label>
+            <label>当前研究理由<input id="watchThesis" placeholder="为什么关注它？"></label>
+          </div>
+          <div class="inline-actions">
+            <button type="button" class="btn btn-ghost small" id="cancelWatchlist">取消</button>
+            <button type="submit" class="btn btn-primary small">保存到本机</button>
+          </div>
+        </form>
+
+        <div class="company-layout">
+          <div>
+            <div class="watchlist-grid" id="watchlistGrid"></div>
+          </div>
+          <aside class="company-research-panel">
+            <span class="eyebrow">DEEP DIVE</span>
+            <h3>研究一家公司</h3>
+            <p>从业务、竞争力、管理层、财务、估值、正反证据到失效信号，形成完整档案。</p>
+            <label>公司名称<input id="companyName" placeholder="腾讯控股"></label>
+            <div class="two-fields">
+              <label>代码<input id="companySymbol" placeholder="0700"></label>
+              <label>市场<select id="companyMarket"><option>A股</option><option selected>港股</option><option>美股</option><option>日本</option><option>韩国</option><option>其他</option></select></label>
+            </div>
+            <label>补充说明 <small>选填</small><textarea id="companyContext" rows="4" placeholder="例如：重点研究现金流、回购和估值。"></textarea></label>
+            <label class="engine-picker">研究引擎
+              <select id="companyEngine">
+                <option value="auto">Codex 订阅优先（默认）</option>
+                <option value="codex">Codex 订阅</option>
+                <option value="api">OpenAI API</option>
+              </select>
+            </label>
+            <label class="team-review-option"><input type="checkbox" id="companyTeamReview"><span><strong>双员工复核</strong><small>事实核验员 + 反方研究员；更慢，也会增加模型用量</small></span></label>
+            <button class="btn btn-primary full" id="companyBtn">生成公司研究 <span>→</span></button>
+          </aside>
+        </div>
+      </section>
+
+      <section class="page" id="page-company-detail">
+        <div class="company-detail-head">
+          <button class="btn btn-ghost small" id="backToCompanies">← 返回我的公司</button>
+          <div class="company-detail-title">
+            <span class="eyebrow">COMPANY WORKSPACE</span>
+            <h2 id="detailCompanyName">公司档案</h2>
+            <p id="detailCompanyMeta"></p>
+          </div>
+          <div class="company-detail-research-actions">
+            <button class="btn btn-ghost" id="detailResearchNow">主研究员更新</button>
+            <button class="btn btn-primary" id="detailTeamResearch">双员工复核 <span>→</span></button>
+          </div>
+        </div>
+
+        <div class="company-detail-metrics" id="companyDetailMetrics"></div>
+
+        <section class="company-detail-card data-source-card">
+          <div class="company-card-section-head">
+            <div>
+              <span class="eyebrow">PUBLIC DATA CONTRACT</span>
+              <h3>这家公司会去哪里查</h3>
+              <p>官方结构化接口优先；需要密钥或许可时退回同一机构公开网页。免费行情只作辅助，不替代公告和财报。</p>
+            </div>
+            <span>只读公开信息</span>
+          </div>
+          <div class="company-data-sources" id="companyDataSources"></div>
+        </section>
+
+        <div class="company-detail-grid">
+          <section class="company-detail-card tracking-card">
+            <span class="eyebrow">CONTINUOUS TRACKING</span>
+            <h3>持续跟踪</h3>
+            <p>让研究台自动检查这家公司的公告、经营、财务和重要消息变化。</p>
+            <form id="companyTrackingForm">
+              <label class="toggle-row company-track-switch"><span>开启自动跟踪</span><input type="checkbox" id="companyTrackingEnabled"><i></i></label>
+              <label>研究频率
+                <select id="companyTrackingFrequency">
+                  <option value="daily">每天</option>
+                  <option value="weekly" selected>每周</option>
+                  <option value="monthly">每月</option>
+                  <option value="yearly">每年</option>
+                </select>
+              </label>
+              <div class="two-fields">
+                <label>执行时间<input type="time" id="companyTrackingTime" value="09:00"></label>
+                <label>每周几<select id="companyTrackingWeekday"></select></label>
+              </div>
+              <div class="two-fields">
+                <label>每月几号<select id="companyTrackingDay"></select></label>
+                <label>每年几月<select id="companyTrackingMonth"></select></label>
+              </div>
+              <label>研究引擎
+                <select id="companyTrackingEngine">
+                  <option value="auto">Codex 订阅优先（默认）</option>
+                  <option value="codex">Codex 订阅</option>
+                  <option value="api">OpenAI API</option>
+                </select>
+              </label>
+              <button class="btn btn-primary full" type="submit">保存跟踪设置</button>
+            </form>
+          </section>
+
+          <section class="company-detail-card company-reports-card">
+            <div class="company-card-section-head">
+              <div><span class="eyebrow">RESEARCH HISTORY</span><h3>公司研究档案</h3></div>
+              <span id="companyReportCount">0 份</span>
+            </div>
+            <div class="company-report-list" id="companyReportList"></div>
+          </section>
+        </div>
+
+        <section class="company-detail-card hypothesis-card">
+          <div class="company-card-section-head">
+            <div>
+              <span class="eyebrow">HYPOTHESIS LEDGER</span>
+              <h3>研究假设台账</h3>
+              <p>把支持证据、反方证据、验证信号和失效信号分开记录，不让旧观点悄悄变成事实。</p>
+            </div>
+            <button class="btn btn-primary small" id="openHypothesisForm" type="button">＋ 新建假设</button>
+          </div>
+          <form class="hypothesis-form hidden" id="hypothesisForm">
+            <div class="two-fields">
+              <label>假设标题<input id="hypothesisTitle" maxlength="160" required placeholder="例如：汽车业务能在三年内形成稳定毛利"></label>
+              <label>当前状态
+                <select id="hypothesisStatus">
+                  <option value="tracking">持续核验</option>
+                  <option value="supported">暂获支持</option>
+                  <option value="challenged">受到挑战</option>
+                  <option value="invalidated">已经失效</option>
+                  <option value="closed">停止跟踪</option>
+                </select>
+              </label>
+            </div>
+            <label>可验证陈述<textarea id="hypothesisStatement" rows="3" placeholder="写成未来能被证伪或证实的陈述，不写买卖结论。"></textarea></label>
+            <div class="hypothesis-evidence-grid">
+              <label>支持证据 <small>每行一条</small><textarea id="hypothesisSupport" rows="4"></textarea></label>
+              <label>反方证据 <small>每行一条</small><textarea id="hypothesisCounter" rows="4"></textarea></label>
+              <label>继续验证信号 <small>每行一条</small><textarea id="hypothesisValidation" rows="4"></textarea></label>
+              <label>失效信号 <small>每行一条</small><textarea id="hypothesisInvalidation" rows="4"></textarea></label>
+            </div>
+            <div class="hypothesis-form-foot">
+              <label>下次复核日期<input id="hypothesisNextReview" type="date"></label>
+              <div class="inline-actions">
+                <button class="btn btn-ghost small" id="cancelHypothesis" type="button">取消</button>
+                <button class="btn btn-primary small" type="submit">保存假设</button>
+              </div>
+            </div>
+          </form>
+          <div class="hypothesis-list" id="hypothesisList"></div>
+        </section>
+
+        <section class="company-detail-card company-chat-card">
+          <div class="company-card-section-head">
+            <div><span class="eyebrow">COMPANY CONVERSATION</span><h3>围绕这家公司连续聊</h3></div>
+            <div class="company-chat-actions">
+              <button class="btn btn-ghost small" id="openCompanyChatInMain" type="button">在连续对话中打开</button>
+              <button class="btn btn-primary small" id="newCompanyConversation" type="button">＋ 新开公司对话</button>
+            </div>
+          </div>
+          <div class="company-chat-layout">
+            <div class="company-conversation-list" id="companyConversationList"></div>
+            <div class="company-chat-main">
+              <div class="company-chat-title" id="companyChatTitle">选择或新建一条公司对话</div>
+              <div class="chat-messages company-chat-messages" id="companyChatMessages"></div>
+              <form class="chat-composer" id="companyChatForm">
+                <textarea id="companyChatInput" rows="3" placeholder="继续问这家公司，Enter 发送"></textarea>
+                <div class="chat-composer-foot">
+                  <label class="web-toggle"><input type="checkbox" id="companyChatUseWeb" checked><span>需要时联网查证</span></label>
+                  <div class="action-cluster compact">
+                    <select id="companyChatEngine">
+                      <option value="auto">Codex 订阅优先</option>
+                      <option value="codex">Codex 订阅</option>
+                      <option value="api">OpenAI API</option>
+                    </select>
+                    <button class="btn btn-primary" type="submit">后台发送 <span>↑</span></button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section class="page" id="page-ask">
+        <div class="conversation-shell">
+          <aside class="conversation-index">
+            <div class="conversation-index-head">
+              <div>
+                <span class="eyebrow">LOCAL MEMORY</span>
+                <h2>全部对话</h2>
+              </div>
+              <button class="btn btn-primary small" id="newConversation">＋ 新对话</button>
+            </div>
+            <input class="conversation-search" id="conversationSearch" placeholder="搜索公司、主题或正文">
+            <div class="conversation-filters" id="conversationFilters">
+              <button class="active" data-source="">全部</button>
+              <button data-source="web">网页</button>
+              <button data-source="codex">Codex</button>
+              <button data-source="scheduler">定时</button>
+            </div>
+            <div class="conversation-list" id="conversationList"></div>
+            <button class="load-more hidden" id="loadMoreConversations">加载更早记录</button>
+          </aside>
+          <div class="chat-workspace">
+            <header class="chat-header">
+              <div>
+                <span class="chat-source" id="chatSource">网页对话</span>
+                <h2 id="chatTitle">新对话</h2>
+              </div>
+              <div class="chat-header-actions">
+                <span class="local-save-badge">所有消息保存在本机</span>
+                <span class="auto-sync-badge" id="autoSyncBadge">自动同步 · 5 秒</span>
+                <select class="compact-export-select" id="conversationExportFormat">
+                  <option value="md">下载 MD</option>
+                  <option value="docx">下载 Word</option>
+                  <option value="pdf">下载 PDF</option>
+                </select>
+                <button class="btn btn-ghost small" id="downloadConversation">下载对话</button>
+                <button class="btn btn-primary small" id="openCodex">在 Codex 中打开</button>
+              </div>
+            </header>
+            <details class="codex-sync-guide">
+              <summary>Codex 和网页到底怎么同步？</summary>
+              <div class="sync-steps">
+                <span><b>1</b> 网页按钮打开这个产品专属的 Codex 文件夹</span>
+                <span><b>2</b> 你在 Codex 里发送问题，Codex 读取同一份老板说明书和自选公司</span>
+                <span><b>3</b> 网页约每 5 秒导入 Codex 的新问答；网页消息也立即写入本机共享档案</span>
+              </div>
+              <p>不用手动点同步。它们共用本机资料库，但不是两个实时共屏窗口；其他 Codex 项目不会被读取。</p>
+            </details>
+            <div class="chat-messages" id="chatMessages">
+              <div class="chat-welcome">
+                <span class="eyebrow">ASK YOUR ANALYST</span>
+                <h3>像发微信一样问。</h3>
+                <p>研究员会读取老板说明书和自选公司，必要时联网查证，并保留来源。</p>
+                <div class="chat-examples">
+                  <button>今天哪些消息真正影响我的自选公司？</button>
+                  <button>腾讯的现金流和资本配置最近有什么变化？</button>
+                  <button>把我的判断拆成支持、反对和待核验三部分。</button>
+                </div>
+              </div>
+            </div>
+            <form class="chat-composer" id="chatForm">
+              <textarea id="chatInput" rows="3" placeholder="写下你的问题，Enter 发送，Shift + Enter 换行"></textarea>
+              <div class="chat-composer-foot">
+                <label class="web-toggle"><input type="checkbox" id="chatUseWeb" checked><span>需要时联网查证</span></label>
+                <div class="action-cluster compact">
+                  <label class="engine-picker inline">引擎
+                    <select id="chatEngine">
+                      <option value="auto">Codex 订阅优先（默认）</option>
+                      <option value="codex">Codex 订阅</option>
+                      <option value="api">OpenAI API</option>
+                    </select>
+                  </label>
+                  <button class="btn btn-primary" id="chatSend" type="submit">发送 <span>↑</span></button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-tasks">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">AUTOMATED BRIEFING</span>
+            <h2>定时汇报</h2>
+          </div>
+          <div class="privacy-badge"><span>●</span> 研究台运行时执行</div>
+        </div>
+        <div class="task-intro">
+          <strong>系统只做汇报，不替老板下交易结论。</strong>
+          <p>任务结果会同时进入“研究档案”和“全部对话”。电脑关闭期间不会执行；重新启动研究台后，会补跑一份错过的正式计划，不会把离线期间的每个时点都重复补一遍。</p>
+        </div>
+        <div class="task-center-layout">
+          <form class="task-builder" id="taskBuilder">
+            <div class="task-builder-head">
+              <span class="eyebrow">ADD A TASK</span>
+              <h3>添加一个汇报任务</h3>
+              <p>左边决定“什么时候跑”，右边会出现一个可以随时暂停、试跑或删除的任务。</p>
+            </div>
+            <label>任务名称<input name="name" value="我的每日研究" required maxlength="80"></label>
+            <div class="two-fields">
+              <label>研究内容<select name="job_type">
+                <option value="hourly_news">消息面扫描</option>
+                <option value="daily_brief" selected>每日市场简报</option>
+                <option value="weekly_review">基本面复盘</option>
+              </select></label>
+              <label>运行方式<select name="frequency" id="newJobFrequency">
+                <option value="interval">每隔一段时间</option>
+                <option value="daily" selected>每天</option>
+                <option value="weekly">每周</option>
+                <option value="monthly">每月</option>
+                <option value="yearly">每年</option>
+              </select></label>
+            </div>
+            <div class="two-fields">
+              <label>每隔多久<select name="interval_minutes">
+                <option value="60">每 1 小时</option>
+                <option value="120" selected>每 2 小时</option>
+                <option value="240">每 4 小时</option>
+                <option value="720">每 12 小时</option>
+              </select></label>
+              <label>固定时间<input type="time" name="time_of_day" value="08:00"></label>
+            </div>
+            <div class="two-fields">
+              <label>每月几号<input type="number" name="day_of_month" min="1" max="28" value="1"></label>
+              <label>每年几月<input type="number" name="month_of_year" min="1" max="12" value="1"></label>
+            </div>
+            <div class="two-fields">
+              <label>哪一天<select name="weekday">
+                <option value="-1" selected>每天</option>
+                <option value="0">周一</option><option value="1">周二</option>
+                <option value="2">周三</option><option value="3">周四</option>
+                <option value="4">周五</option><option value="5">周六</option>
+                <option value="6">周日</option>
+              </select></label>
+              <label>研究引擎<select name="engine">
+                <option value="auto">Codex 订阅优先（默认）</option>
+                <option value="codex">Codex 订阅</option>
+                <option value="api">OpenAI API</option>
+              </select></label>
+            </div>
+            <div class="two-fields">
+              <label>活跃开始<input type="time" name="active_start" value="07:00"></label>
+              <label>活跃结束<input type="time" name="active_end" value="23:00"></label>
+            </div>
+            <fieldset class="framework-picker">
+              <legend>加入公开方法视角</legend>
+              <label><input type="checkbox" name="frameworks" value="段永平公开方法" checked> 段永平公开方法</label>
+              <label><input type="checkbox" name="frameworks" value="但斌公开方法" checked> 但斌公开方法</label>
+            </fieldset>
+            <label>任务说明<textarea name="prompt" rows="4">只汇报新增变化，区分事实、分析、反方证据和待核验信息。</textarea></label>
+            <label class="builder-enable"><input type="checkbox" name="enabled" checked> 创建后立即启用</label>
+            <button class="btn btn-primary full" type="submit">添加到任务列表</button>
+          </form>
+          <div class="task-list-panel">
+            <div class="task-list-head">
+              <div><span class="eyebrow">CURRENT TASKS</span><h3>现在已有的任务</h3></div>
+              <span id="taskCountText">0 个</span>
+            </div>
+            <div class="task-grid" id="taskGrid"></div>
+          </div>
+        </div>
+        <div class="task-cost-note">
+          <span>成本提醒</span>
+          <p>Codex 引擎会消耗订阅额度，API 引擎会产生 API 费用。建议先限定 07:00—23:00，观察一周后再决定是否全天运行。</p>
+        </div>
+      </section>
+
+      <section class="page" id="page-frameworks">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">PUBLIC METHOD LIBRARY</span>
+            <h2>公开投资框架</h2>
+          </div>
+          <div class="privacy-badge"><span>◇</span> 只提炼公开方法</div>
+        </div>
+        <div class="framework-warning">
+          <strong>这里不是“名人分身”。</strong>
+          <p>系统只把公开材料变成一组检查问题。它不会冒充本人，不猜他们的持仓，也不会说“某某一定会买”。</p>
+        </div>
+        <div class="framework-grid" id="frameworkGrid"></div>
+      </section>
+
+      <section class="page" id="page-history">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">LOCAL ARCHIVE</span>
+            <h2>研究档案</h2>
+          </div>
+          <div class="filter-tabs" id="reportFilters">
+            <button class="active" data-filter="">全部</button>
+            <button data-filter="daily">每日简报</button>
+            <button data-filter="company">公司研究</button>
+            <button data-filter="qa">问题研究</button>
+            <button data-filter="hourly">消息扫描</button>
+            <button data-filter="weekly">每周复盘</button>
+          </div>
+        </div>
+        <div class="history-list" id="historyList"></div>
+      </section>
+
+      <section class="page" id="page-settings">
+        <div class="settings-layout">
+          <div>
+            <span class="eyebrow">OWNER MANUAL</span>
+            <h2>老板投资说明书</h2>
+            <p class="lead">这里只保存老板亲自确认过的偏好。AI 不会偷偷猜测或修改。</p>
+          </div>
+          <form class="settings-form" id="settingsForm">
+            <div class="settings-section">
+              <div class="settings-number">01</div>
+              <div class="settings-fields">
+                <h3>我主要看什么</h3>
+                <label>称呼<input id="ownerName" maxlength="30"></label>
+                <label>核心市场 <small>用逗号分隔</small><input id="primaryMarkets"></label>
+                <label>外围参考市场 <small>用逗号分隔</small><input id="referenceMarkets"></label>
+                <label>重点板块 <small>用逗号分隔</small><input id="focusSectors"></label>
+                <label>明确不碰的行业 <small>用逗号分隔，可留空</small><input id="excludedSectors"></label>
+              </div>
+            </div>
+            <div class="settings-section">
+              <div class="settings-number">02</div>
+              <div class="settings-fields">
+                <h3>我怎样判断</h3>
+                <label>投资周期<input id="investmentHorizon"></label>
+                <label>风险偏好<textarea id="riskPreference" rows="3"></textarea></label>
+                <label>分析顺序<input id="analysisFramework"></label>
+                <label>参考投资框架 <small>只学习公开方法，不冒充本人</small><input id="referenceInvestors"></label>
+                <label>常看指标 <small>用逗号分隔</small><input id="preferredMetrics"></label>
+                <label>喜欢的报告方式<textarea id="reportStyle" rows="3"></textarea></label>
+              </div>
+            </div>
+            <div class="settings-section">
+              <div class="settings-number">03</div>
+              <div class="settings-fields">
+                <h3>数据与权限边界</h3>
+                <label>允许使用的数据 <small>用逗号分隔</small><input id="dataPermissions"></label>
+                <label>必须隔离的内容 <small>用逗号分隔</small><input id="privacyBoundaries"></label>
+                <div class="settings-boundary">
+                  <p><strong>本机保存：</strong>对话、报告、自选公司和任务配置写入当前产品目录。</p>
+                  <p><strong>联网范围：</strong>只发送生成当前回答所需的记忆片段和公开检索请求，不发送无关本地文件。</p>
+                  <p><strong>没有交易权限：</strong>不连接券商账户，不自动下单，不输出个性化买卖指令。</p>
+                </div>
+              </div>
+            </div>
+            <div class="settings-submit">
+              <div class="local-note"><span>✓</span> 偏好和报告只保存在当前电脑的产品目录。</div>
+              <button class="btn btn-primary" type="submit">保存老板说明书</button>
+            </div>
+          </form>
+          <div class="config-help" id="configHelp">
+            <h3>双引擎状态</h3>
+            <div class="engine-status-grid" id="engineStatus"></div>
+            <p><strong>默认就是 Codex 订阅：</strong>只有订阅不可用且本机配置了 API Key 时，系统才自动切到 API。</p>
+            <p>Windows 双击 <strong>Windows_首次配置.cmd</strong>，Mac 双击 <strong>首次配置.command</strong>，即可检查 Codex 登录并可选填 API Key。Key 只写入本机 <code>.env</code>，不会显示在网页里。</p>
+          </div>
+          <div class="config-help memory-help">
+            <h3>长期记忆状态</h3>
+            <div id="memoryStatus" class="memory-status"></div>
+            <p>完整消息全部留在本机；每次回答只调取老板确认的偏好、决策、纠正和与当前问题最相关的历史。这样既记得多，也不会把所有旧内容一股脑塞进回答。</p>
+            <p><strong>Codex 同步边界：</strong>只同步在这个投研产品文件夹中创建的 Codex 对话，不读取其他项目和普通聊天。</p>
+          </div>
+          <div class="config-help update-help">
+            <div class="backup-help-head">
+              <div>
+                <h3>安全自动更新</h3>
+                <p id="autoUpdateText">每 6 小时检查一次 GitHub 正式版本</p>
+              </div>
+              <div class="update-actions">
+                <button class="btn btn-light small" id="checkUpdate" type="button">检查新版本</button>
+                <button class="btn btn-primary small" id="installUpdate" type="button" disabled>安装新版本</button>
+              </div>
+            </div>
+            <div id="updateStatus" class="update-status"></div>
+            <p><strong>数据保护：</strong>更新包只能覆盖程序和投研插件，不能覆盖 <code>.env</code>、数据库、对话、报告、老板偏好、自选公司、决策和纠正记录。安装前自动生成资料快照；新版健康检查失败会自动恢复旧程序和旧数据库。</p>
+          </div>
+          <div class="config-help backup-help">
+            <div class="backup-help-head">
+              <div><h3>本机备份</h3><p>每天自动制作一致性快照，保留最近 14 份；只包含本产品数据库。</p></div>
+              <button class="btn btn-primary small" id="createBackup" type="button">立即备份</button>
+            </div>
+            <div id="backupStatus" class="backup-status"></div>
+            <p><strong>恢复边界：</strong>为避免覆盖正在写入的档案，恢复时必须先停止研究台，再由人确认替换数据库；产品不会静默自动恢复。</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <aside class="background-drawer hidden" id="backgroundDrawer">
+    <header>
+      <div><span class="eyebrow">BACKGROUND RESEARCH</span><h3>后台任务</h3></div>
+      <button id="closeBackgroundDrawer" aria-label="关闭">×</button>
+    </header>
+    <p>任务运行时页面可以照常使用。完成后报告自动进入本机档案。</p>
+    <div class="background-task-list" id="backgroundTaskList"></div>
+  </aside>
+
+  <div class="report-viewer hidden" id="reportViewer">
+    <div class="viewer-backdrop" id="closeViewerBackdrop"></div>
+    <article class="viewer-panel">
+      <header class="viewer-header">
+        <div>
+          <span class="report-kind" id="viewerKind">研究报告</span>
+          <h2 id="viewerTitle"></h2>
+          <p id="viewerMeta"></p>
+        </div>
+        <button class="viewer-close" id="closeViewer" aria-label="关闭">×</button>
+      </header>
+      <div class="viewer-body">
+        <div class="report-content" id="viewerContent"></div>
+        <aside class="source-panel">
+          <h3>来源清单</h3>
+          <p>点击回到原网页核验；等级按域名保守识别。</p>
+          <div id="viewerSourceAudit"></div>
+          <div id="viewerSources"></div>
+        </aside>
+      </div>
+      <footer class="viewer-footer">
+        <span>研究辅助 · 非投资建议 · 不含交易权限</span>
+        <div class="viewer-actions">
+          <select id="reportExportFormat">
+            <option value="md">Markdown</option>
+            <option value="docx">Word</option>
+            <option value="pdf">PDF</option>
+          </select>
+          <button class="btn btn-ghost small" id="downloadReport">下载到本机</button>
+          <button class="btn btn-ghost small" id="copyReport">复制报告</button>
+        </div>
+      </footer>
+    </article>
+  </div>
+
+  <div class="toast hidden" id="toast"></div>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

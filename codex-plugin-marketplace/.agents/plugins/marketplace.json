@@ -1,0 +1,20 @@
+{
+  "name": "boss-investment",
+  "interface": {
+    "displayName": "Boss Investment"
+  },
+  "plugins": [
+    {
+      "name": "ai-investment-employee",
+      "source": {
+        "source": "local",
+        "path": "./plugins/ai-investment-employee"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
