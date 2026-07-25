@@ -1,6 +1,6 @@
 {
   "name": "ai-investment-employee",
-  "version": "0.11.0+codex.20260725",
+  "version": "0.11.1+codex.20260725",
   "description": "A Windows/macOS persistent AI investment research employee with continuous conversations, per-company workspaces, background research, scheduled tracking, and shared local web/Codex archives.",
   "author": {
     "name": "\u5929\u7b56",
@@ -24,7 +24,8 @@
       "\u521d\u59cb\u5316\u6211\u7684\u6295\u7814\u6570\u5b57\u5458\u5de5\uff0c\u5e76\u4e00\u6b21\u53ea\u95ee\u6211\u4e00\u4e2a\u95ee\u9898\u3002",
       "\u6839\u636e\u6211\u7684\u504f\u597d\u548c\u81ea\u9009\u516c\u53f8\u751f\u6210\u4eca\u5929\u7684\u6295\u7814\u6668\u62a5\u3002",
       "\u590d\u76d8\u6211\u4e0a\u6b21\u5bf9\u8fd9\u5bb6\u516c\u53f8\u7684\u5224\u65ad\u53d1\u751f\u4e86\u4ec0\u4e48\u53d8\u5316\u3002",
-      "\u6253\u5f00\u5b9a\u65f6\u6c47\u62a5\uff0c\u5e2e\u6211\u914d\u7f6e\u6bcf\u5c0f\u65f6\u6d88\u606f\u9762\u626b\u63cf\u3002"
+      "\u6253\u5f00\u5b9a\u65f6\u6c47\u62a5\uff0c\u5e2e\u6211\u914d\u7f6e\u6bcf\u5c0f\u65f6\u6d88\u606f\u9762\u626b\u63cf\u3002",
+      "\u628a\u6295\u7814\u6570\u5b57\u5458\u5de5\u66f4\u65b0\u5230\u6700\u65b0\u7248\u3002"
     ],
     "brandColor": "#C99A42"
   }

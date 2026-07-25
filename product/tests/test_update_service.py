@@ -72,3 +72,8 @@ def test_windows_update_command_is_explicit_and_non_shell(monkeypatch) -> None:
     assert command[-1] == "-Automatic"
     assert any(item.endswith("update.ps1") for item in command)
 
+
+def test_update_command_recognizes_only_explicit_owner_phrases() -> None:
+    assert update_service.is_update_command("把投研数字员工更新到最新版。")
+    assert update_service.is_update_command("检查并更新数字员工")
+    assert not update_service.is_update_command("介绍一下数字员工怎么更新")

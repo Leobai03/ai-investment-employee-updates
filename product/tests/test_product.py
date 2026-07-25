@@ -52,7 +52,7 @@ def test_health_and_default_profile() -> None:
         health = client.get("/api/health")
         assert health.status_code == 200
         assert health.json()["demo_mode"] is True
-        assert health.json()["version"] == "0.11.0"
+        assert health.json()["version"] == "0.11.1"
         assert "platform" in health.json()
         assert set(health.json()["engines"]) == {"default", "codex", "api", "demo"}
         profile = client.get("/api/profile").json()
@@ -78,7 +78,7 @@ def test_health_and_default_profile() -> None:
         assert next(job for job in jobs if job["job_type"] == "daily_brief")["enabled"] is True
         updates = client.get("/api/updates/status")
         assert updates.status_code == 200
-        assert updates.json()["current_version"] == "0.11.0"
+        assert updates.json()["current_version"] == "0.11.1"
         assert updates.json()["repository"]
         assert client.post("/api/updates/install").status_code == 403
 
@@ -93,6 +93,42 @@ def test_update_install_is_blocked_outside_windows(monkeypatch) -> None:
             headers={"X-AI-Research-Action": "install-update"},
         )
         assert unsupported.status_code == 409
+
+
+def test_conversation_update_phrase_launches_safe_updater(monkeypatch) -> None:
+    launches: list[bool] = []
+    monkeypatch.setattr(
+        main_module,
+        "check_latest",
+        lambda: {
+            "state": "available",
+            "supported": True,
+            "current_version": "0.11.0",
+            "latest_version": "0.11.1",
+            "update_available": True,
+        },
+    )
+    monkeypatch.setattr(
+        main_module,
+        "launch_updater",
+        lambda: launches.append(True) or {"state": "queued"},
+    )
+    with TestClient(app) as client:
+        conversation = client.post(
+            "/api/conversations",
+            json={"title": "软件更新"},
+        ).json()
+        reply = client.post(
+            f"/api/conversations/{conversation['id']}/messages",
+            json={
+                "content": "把投研数字员工更新到最新版。",
+                "use_web": False,
+                "engine": "auto",
+            },
+        )
+        assert reply.status_code == 200
+        assert "安全更新器已经启动" in reply.json()["message"]["content"]
+        assert launches == [True]
 
 
 def test_windows_codex_cmd_uses_comspec() -> None:

@@ -16,7 +16,7 @@ ROOT = build_delivery.ROOT
 PLUGIN_ROOT = ROOT.parent / "codex-plugin-marketplace"
 VERSION = build_delivery.VERSION
 DIST_DIR = ROOT / "dist"
-ARCHIVE_NAME = f"AI投研数字员工_v{VERSION}_Windows正式交付.zip"
+ARCHIVE_NAME = f"ai-investment-employee-windows-v{VERSION}.zip"
 PACKAGE_ROOT = "AI投研数字员工_Windows"
 
 WINDOWS_REQUIRED = {

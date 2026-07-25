@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import platform
+import re
 import subprocess
 import urllib.error
 import urllib.request
@@ -31,10 +32,23 @@ DEFAULT_STATUS = {
     "last_checked_at": "",
     "backup_root": "",
 }
+UPDATE_COMMANDS = {
+    "把投研数字员工更新到最新版",
+    "请把投研数字员工更新到最新版",
+    "更新投研数字员工到最新版",
+    "检查并更新投研数字员工",
+    "检查并更新数字员工",
+    "更新数字员工",
+}
 
 
 class UpdateServiceError(RuntimeError):
     pass
+
+
+def is_update_command(value: str) -> bool:
+    normalized = re.sub(r"[\s，。！？、,.!?]+", "", value)
+    return normalized in UPDATE_COMMANDS
 
 
 def current_version() -> str:

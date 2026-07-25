@@ -100,6 +100,7 @@ from .update_service import (
     UpdateServiceError,
     automatic_update_loop,
     check_latest,
+    is_update_command,
     launch_updater,
     should_run_automatic_loop,
     update_status,
@@ -112,7 +113,7 @@ codex_archive = CodexArchiveSync(research_client.codex, workspace=PRODUCT_DIR)
 running_jobs: set[int] = set()
 background_tasks: set[asyncio.Task] = set()
 backup_state: dict[str, str] = {"last_success_at": "", "last_error": ""}
-APP_VERSION = "0.11.0"
+APP_VERSION = "0.11.1"
 
 
 def _friendly_error(exc: Exception) -> str:
@@ -530,6 +531,43 @@ async def _conversation_reply(
             content,
             metadata={"engine": engine, "use_web": use_web},
         )
+    if is_update_command(content):
+        status = await asyncio.to_thread(check_latest)
+        if status.get("state") == "error":
+            message = str(status.get("message") or "更新检查失败，请稍后重试。")
+        elif not status.get("supported"):
+            message = (
+                "已经检查版本，但一句话覆盖安装只在 Windows 正式交付版启用。"
+                "当前电脑不会修改任何文件。"
+            )
+        elif not status.get("update_available"):
+            message = (
+                f"当前 v{status.get('current_version', APP_VERSION)} 已经是最新版，"
+                "不需要重复安装。"
+            )
+        else:
+            latest = str(status.get("latest_version") or "").strip()
+            message = (
+                f"已确认更新到 v{latest}。安全更新器已经启动；"
+                "它会先备份老板资料，网页可能短暂断开，完成后自动恢复。"
+            )
+        assistant = add_message(
+            conversation_id,
+            "assistant",
+            message,
+            metadata={"update_action": True},
+        )
+        if status.get("supported") and status.get("update_available"):
+            try:
+                await asyncio.to_thread(launch_updater)
+            except UpdateServiceError as exc:
+                assistant = add_message(
+                    conversation_id,
+                    "assistant",
+                    f"更新程序未能启动：{exc}",
+                    metadata={"update_action": True, "error": True},
+                )
+        return {"conversation": get_conversation(conversation_id), "message": assistant}
     conversation = get_conversation(conversation_id)
     history = [
         {"role": item["role"], "content": item["content"]}

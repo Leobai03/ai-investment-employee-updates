@@ -2,14 +2,25 @@
 
 ## 第一次安装
 
-1. 把整个 `AI投研数字员工_Windows` 文件夹解压到一个固定位置。不要直接在 ZIP 里运行，也不要只复制某个 `.cmd` 文件。
-2. 打开 `product`，双击 `Windows_首次配置.cmd`。
-3. 安装器会依次检查或安装 ChatGPT Windows 客户端、Python 3.14、Node.js LTS、OpenAI Codex CLI、`$ai-investment-employee` 插件和网页产品依赖。
-4. 浏览器出现登录页时，用老板自己的 ChatGPT 账号完成 Codex 登录。
-5. 安装完成后会自动打开 `http://127.0.0.1:8765`。以后直接双击 `Windows_启动研究台.cmd`。
-6. 双击 `Windows_系统自检.cmd`；看到“Windows 核心依赖自检通过”后，首次安装完成。
+1. 打开正式发布页：<https://github.com/Leobai03/ai-investment-employee-updates/releases/latest>。
+2. 下载 `ai-investment-employee-windows-vX.Y.Z.zip` 和同名 `.sha256`。不要下载名字中带 `update` 的升级包。
+3. 右键原始 ZIP →“属性”→勾选“解除锁定”→“应用”。必须在解压前做这一步；这是解决 Windows“来自 Internet 的文件被阻止”的安全做法。
+4. 把整个 `AI投研数字员工_Windows` 文件夹解压到一个固定位置。不要直接在 ZIP 里运行，也不要只复制某个 `.cmd` 文件。
+5. 打开 `product`，双击 `Windows_首次配置.cmd`。
+6. 安装器会依次检查或安装 ChatGPT Windows 客户端、Python 3.14、Node.js LTS、OpenAI Codex CLI、`$ai-investment-employee` 插件和网页产品依赖。
+7. 浏览器出现登录页时，用老板自己的 ChatGPT 账号完成 Codex 登录。
+8. 安装完成后会自动打开 `http://127.0.0.1:8765`。以后直接双击 `Windows_启动研究台.cmd`。
+9. 双击 `Windows_系统自检.cmd`；看到“Windows 核心依赖自检通过”后，首次安装完成。
 
 安装器只使用 Microsoft Store、Windows `winget` 和 OpenAI 官方 npm 包，不下载来路不明的可执行文件。PowerShell 的 `ExecutionPolicy Bypass` 只对本次双击启动的进程生效，不永久修改 Windows 执行策略。
+
+如果 ZIP 的属性页没有“解除锁定”，解压后在完整交付包根目录打开 PowerShell，执行：
+
+```powershell
+Get-ChildItem -Recurse -File | Unblock-File
+```
+
+不要为了安装而关闭 Windows Smart App Control 或防病毒保护。
 
 ## 网页怎么用
 
@@ -62,6 +73,7 @@
 ## 自动更新
 
 - 默认每 6 小时检查一次 GitHub 正式 Release；
+- 老板在 Codex 或网页连续对话中说“把投研数字员工更新到最新版”，会进入同一个安全更新器；
 - 网页“老板偏好 → 安全自动更新”可以查看状态和手动安装；
 - 更新前自动备份数据库、对话、报告、偏好、自选、决策、纠正和 `.env`；
 - 更新包只能覆盖程序与插件，不能覆盖老板资料；

@@ -2,7 +2,13 @@
 
 ## 老板电脑怎么更新
 
-v0.11.0 开始，Windows 正式版默认每 6 小时检查一次固定 GitHub 仓库的最新正式 Release。
+v0.11.0 开始，Windows 正式版默认每 6 小时检查一次固定 GitHub 仓库的最新正式 Release。v0.11.1 开始，老板还可以在 Codex 或网页连续对话中直接说：
+
+```text
+把投研数字员工更新到最新版。
+```
+
+员工会调用同一个安全更新器，不会用模型自行覆盖文件。
 
 发现新版本后：
 
@@ -17,6 +23,17 @@ v0.11.0 开始，Windows 正式版默认每 6 小时检查一次固定 GitHub �
 9. 失败则自动恢复旧程序、旧数据库和升级前资料。
 
 老板也可以在网页“老板偏好 → 安全自动更新”查看状态、检查新版本和手动安装，或双击 `Windows_检查并更新.cmd`。
+
+## 新 Windows 电脑怎么安装
+
+GitHub 每个正式 Release 同时提供：
+
+- `ai-investment-employee-windows-vX.Y.Z.zip`：无老板资料、无密钥的完整首次安装包；
+- `ai-investment-employee-windows-vX.Y.Z.zip.sha256`：完整包校验值；
+- `ai-investment-employee-update-vX.Y.Z.zip`：已有电脑使用的程序升级包；
+- `ai-investment-employee-update-vX.Y.Z.zip.sha256`：升级包校验值。
+
+新电脑只下载 `windows` 完整包。右键 ZIP →“属性”→“解除锁定”后再解压，然后运行 `product\Windows_首次配置.cmd`。不要在公开 Release 中上传带老板说明书、对话、报告、数据库或 `.env` 的本机交付包。
 
 ## 永远不覆盖的数据
 
@@ -64,7 +81,7 @@ Leobai03/ai-investment-employee-updates
 4. 提交代码并推送 `vX.Y.Z` 标签；
 5. GitHub Actions 在 Ubuntu 和原生 Windows 上测试；
 6. Windows 流程额外执行一次真实的停止、备份、覆盖、依赖安装、启动和资料留存测试；
-7. 全部通过后，工作流创建不可变 Release 并上传更新 ZIP 与 SHA-256；
+7. 全部通过后，工作流创建不可变 Release，并上传无老板资料的 Windows 完整包、更新包及各自 SHA-256；
 8. 老板电脑下一次检查时自动获取正式版。
 
 工作流不会在测试失败时发布 Release，也不会覆盖同名旧 Release。

@@ -53,7 +53,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python product/scripts/build_windows_delivery.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $archive = Get-ChildItem (Join-Path $PWD "product\dist") -Filter "*_Windows*.zip" | Select-Object -First 1
+          $archive = Get-ChildItem (Join-Path $PWD "product\dist") -Filter "ai-investment-employee-windows-*.zip" | Select-Object -First 1
           if (-not $archive) { throw "Windows delivery archive was not built." }
           $deliveryRoot = Join-Path $env:RUNNER_TEMP "windows-delivery"
           New-Item -ItemType Directory -Force -Path $deliveryRoot | Out-Null
@@ -107,6 +107,10 @@ jobs:
       - name: Verify version and build update bundle
         working-directory: product
         run: python scripts/release_check.py --tag "${GITHUB_REF_NAME}"
+      - name: Build privacy-safe Windows first-install package
+        run: |
+          python codex-plugin-marketplace/plugins/ai-investment-employee/skills/ai-investment-employee/scripts/init_investment_workspace.py --path product
+          python product/scripts/build_windows_delivery.py
       - name: Publish immutable release assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -114,6 +118,8 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" \
             "product/dist/ai-investment-employee-update-${GITHUB_REF_NAME}.zip" \
             "product/dist/ai-investment-employee-update-${GITHUB_REF_NAME}.zip.sha256" \
+            "product/dist/ai-investment-employee-windows-${GITHUB_REF_NAME}.zip" \
+            "product/dist/ai-investment-employee-windows-${GITHUB_REF_NAME}.zip.sha256" \
             --title "AI 投研数字员工 ${GITHUB_REF_NAME}" \
             --generate-notes \
             --verify-tag
