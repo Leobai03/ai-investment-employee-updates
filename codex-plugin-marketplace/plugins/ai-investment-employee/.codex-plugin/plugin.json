@@ -1,6 +1,6 @@
 {
   "name": "ai-investment-employee",
-  "version": "0.11.1+codex.20260725",
+  "version": "0.11.2+codex.20260725",
   "description": "A Windows/macOS persistent AI investment research employee with continuous conversations, per-company workspaces, background research, scheduled tracking, and shared local web/Codex archives.",
   "author": {
     "name": "\u5929\u7b56",

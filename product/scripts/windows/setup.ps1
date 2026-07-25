@@ -25,21 +25,33 @@ function Install-WingetPackage {
     Refresh-ProcessPath
 }
 
-Write-Section "1/5 ChatGPT Windows 客户端"
-$chatGptInstalled = $false
-try {
-    $packages = @(Get-AppxPackage -ErrorAction Stop | Where-Object {
-        $_.Name -match "ChatGPT" -or $_.PackageFamilyName -match "9PLM9XGG6VKS"
-    })
-    $chatGptInstalled = $packages.Count -gt 0
-} catch {
-    $chatGptInstalled = $false
+function Test-ChatGPTInstalled {
+    try {
+        $packages = @(Get-AppxPackage -ErrorAction Stop | Where-Object {
+            $_.Name -match "ChatGPT" -or
+            $_.PackageFullName -match "9PLM9XGG6VKS|ChatGPT" -or
+            $_.PackageFamilyName -match "9PLM9XGG6VKS|ChatGPT"
+        })
+        return $packages.Count -gt 0
+    } catch {
+        return $false
+    }
 }
-if ($chatGptInstalled) {
+
+Write-Section "1/5 ChatGPT Windows 客户端"
+if (Test-ChatGPTInstalled) {
     Write-Host "ChatGPT Windows 客户端已安装。" -ForegroundColor Green
 } else {
     Write-Host "正在通过 Microsoft Store 安装 ChatGPT……"
-    Install-WingetPackage -Id "9PLM9XGG6VKS" -Source "msstore"
+    try {
+        Install-WingetPackage -Id "9PLM9XGG6VKS" -Source "msstore"
+    } catch {
+        if (Test-ChatGPTInstalled) {
+            Write-Warning "Microsoft Store 返回了安装异常，但已检测到 ChatGPT Windows 客户端，继续首次配置。"
+        } else {
+            throw
+        }
+    }
 }
 
 Write-Section "2/5 Python"

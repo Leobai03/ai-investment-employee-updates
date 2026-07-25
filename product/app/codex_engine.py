@@ -163,7 +163,7 @@ class CodexResearchClient:
                         "clientInfo": {
                             "name": "tiance_ai_research_archive",
                             "title": "天策 AI 投研档案同步",
-                            "version": "0.11.1",
+                            "version": "0.11.2",
                         }
                     },
                 },
@@ -263,7 +263,7 @@ class CodexResearchClient:
                         "clientInfo": {
                             "name": "tiance_ai_research_desk",
                             "title": "天策 AI 投研数字员工",
-                            "version": "0.11.1",
+                            "version": "0.11.2",
                         }
                     },
                 },

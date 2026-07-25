@@ -113,7 +113,7 @@ codex_archive = CodexArchiveSync(research_client.codex, workspace=PRODUCT_DIR)
 running_jobs: set[int] = set()
 background_tasks: set[asyncio.Task] = set()
 backup_state: dict[str, str] = {"last_success_at": "", "last_error": ""}
-APP_VERSION = "0.11.1"
+APP_VERSION = "0.11.2"
 
 
 def _friendly_error(exc: Exception) -> str:

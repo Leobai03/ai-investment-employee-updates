@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.11.1"
+VERSION = "0.11.2"
 DIST_DIR = ROOT / "dist"
 ARCHIVE_NAME = f"AI投研数字员工_v{VERSION}_老板交付.zip"
 
