@@ -11,6 +11,7 @@ import sys
 import tempfile
 import uuid
 import zipfile
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -140,12 +141,34 @@ def _atomic_copy(source: Path, target: Path) -> None:
 
 def _database_backup(source: Path, target: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(source, timeout=30) as source_conn:
-        with sqlite3.connect(target) as target_conn:
+    with closing(sqlite3.connect(source, timeout=30)) as source_conn:
+        with closing(sqlite3.connect(target, timeout=30)) as target_conn:
             source_conn.backup(target_conn)
             result = target_conn.execute("PRAGMA quick_check").fetchone()
             if not result or result[0] != "ok":
                 raise UpdateError("升级前数据库备份完整性检查失败。")
+
+
+def _restore_database(source: Path, target: Path) -> None:
+    """Restore SQLite through SQLite itself instead of replacing an open file.
+
+    Windows refuses ``os.replace`` when any SQLite handle or scanner briefly
+    holds the destination. The backup API safely overwrites database pages and
+    remains compatible with both rollback tests and the stopped desktop app.
+    """
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    for suffix in ("-shm", "-wal"):
+        Path(f"{target}{suffix}").unlink(missing_ok=True)
+    with closing(sqlite3.connect(source, timeout=30)) as source_conn:
+        with closing(sqlite3.connect(target, timeout=30)) as target_conn:
+            source_conn.backup(target_conn)
+            target_conn.commit()
+            result = target_conn.execute("PRAGMA quick_check").fetchone()
+            if not result or result[0] != "ok":
+                raise UpdateError("回滚后的数据库完整性检查失败。")
+    for suffix in ("-shm", "-wal"):
+        Path(f"{target}{suffix}").unlink(missing_ok=True)
 
 
 def _snapshot_userdata(product_root: Path, backup_root: Path) -> dict[str, Any]:
@@ -349,7 +372,10 @@ def rollback_update(
                 relative = source.relative_to(extracted)
                 target = install_root / relative
                 if relative.as_posix() == "product/.env" or relative.parts[1] == PROTECTED_WORKSPACE:
-                    _atomic_copy(source, target)
+                    if relative.as_posix() == f"product/{PROTECTED_WORKSPACE}/data/research.db":
+                        _restore_database(source, target)
+                    else:
+                        _atomic_copy(source, target)
                 else:
                     raise UpdateError(f"用户资料快照包含越界文件：{relative}")
         userdata_restored = True
@@ -425,4 +451,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-
