@@ -42,12 +42,23 @@ jobs:
       - name: Check browser JavaScript
         working-directory: product
         run: node --check app/static/app.js
-      - name: Parse Windows PowerShell scripts
+      - name: Build and parse the deployed Windows delivery
         if: runner.os == 'Windows'
         shell: powershell
         run: |
+          $version = (Get-Content product/VERSION -Raw).Trim()
+          python product/scripts/build_windows_delivery.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $archive = Join-Path $PWD "product\dist\AI投研数字员工_v${version}_Windows正式交付.zip"
+          $deliveryRoot = Join-Path $env:RUNNER_TEMP "windows-delivery"
+          New-Item -ItemType Directory -Force -Path $deliveryRoot | Out-Null
+          Expand-Archive -LiteralPath $archive -DestinationPath $deliveryRoot -Force
+          $installRoot = Join-Path $deliveryRoot "AI投研数字员工_Windows"
+          if (-not (Test-Path -LiteralPath (Join-Path $installRoot "product\scripts\windows\update.ps1"))) {
+            throw "Windows 正式交付包解压结构不正确。"
+          }
           $failed = $false
-          $files = @(Get-ChildItem product/scripts/windows/*.ps1) + @(Get-ChildItem codex-plugin-marketplace/scripts/windows/*.ps1)
+          $files = @(Get-ChildItem (Join-Path $installRoot "product\scripts\windows\*.ps1")) + @(Get-ChildItem (Join-Path $installRoot "codex-plugin-marketplace\scripts\windows\*.ps1"))
           foreach ($file in $files) {
             $tokens = $null
             $errors = $null
@@ -63,11 +74,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          $installRoot = Join-Path $env:RUNNER_TEMP "AI投研数字员工_Windows"
+          $installRoot = Join-Path (Join-Path $env:RUNNER_TEMP "windows-delivery") "AI投研数字员工_Windows"
           $fixtureRoot = Join-Path $env:RUNNER_TEMP "update-fixture"
-          New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
-          Copy-Item product (Join-Path $installRoot "product") -Recurse
-          Copy-Item codex-plugin-marketplace (Join-Path $installRoot "codex-plugin-marketplace") -Recurse
           python -m venv (Join-Path $installRoot "product\.venv")
           & (Join-Path $installRoot "product\.venv\Scripts\python.exe") -m pip install -r (Join-Path $installRoot "product\requirements.txt")
           $currentVersion = [version](Get-Content product/VERSION -Raw).Trim()
