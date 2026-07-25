@@ -7,7 +7,7 @@
 1. 开发版本通过测试后，将 `product/VERSION`、应用版本和插件版本统一更新；
 2. 推送 `vX.Y.Z` Git 标签；
 3. GitHub Actions 在 Windows 和 Linux 上运行自动化测试；
-4. 测试通过后生成 `AI投研数字员工_Update_vX.Y.Z.zip` 和 SHA-256；
+4. 测试通过后生成 `ai-investment-employee-update-vX.Y.Z.zip` 和 SHA-256；
 5. 老板电脑每 6 小时读取 GitHub 最新正式 Release；
 6. 下载、校验、备份、停止旧版、覆盖程序并启动新版；
 7. 新版健康检查失败时，自动恢复旧程序和升级前数据库。
@@ -34,4 +34,3 @@ git push origin main --tags
 ```
 
 正式 Release 由 `.github/workflows/release.yml` 自动创建，不手工覆盖已有版本。
-

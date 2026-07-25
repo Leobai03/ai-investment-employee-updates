@@ -87,7 +87,7 @@ jobs:
           $currentVersion = [version](Get-Content product/VERSION -Raw).Trim()
           $targetVersion = "{0}.{1}.{2}" -f $currentVersion.Major, $currentVersion.Minor, ($currentVersion.Build + 1)
           python product/tests/windows_update_integration.py prepare --install-root $installRoot --output-dir $fixtureRoot --target-version $targetVersion
-          $archive = Get-ChildItem $fixtureRoot -Filter "*_Update_v$targetVersion.zip" | Select-Object -First 1
+          $archive = Get-ChildItem $fixtureRoot -Filter "*update-v$targetVersion.zip" | Select-Object -First 1
           if (-not $archive) { throw "Synthetic update archive was not built." }
           & (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe") -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $installRoot "product\scripts\windows\update.ps1") -PackagePath $archive.FullName
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -112,8 +112,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" \
-            "product/dist/AI投研数字员工_Update_${GITHUB_REF_NAME}.zip" \
-            "product/dist/AI投研数字员工_Update_${GITHUB_REF_NAME}.zip.sha256" \
+            "product/dist/ai-investment-employee-update-${GITHUB_REF_NAME}.zip" \
+            "product/dist/ai-investment-employee-update-${GITHUB_REF_NAME}.zip.sha256" \
             --title "AI 投研数字员工 ${GITHUB_REF_NAME}" \
             --generate-notes \
             --verify-tag

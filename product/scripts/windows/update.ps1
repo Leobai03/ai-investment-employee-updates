@@ -131,7 +131,7 @@ try {
         if (-not (Test-Path -LiteralPath $checksumPath)) {
             Fail-Update -Message "离线更新包缺少 SHA-256 文件：$checksumPath"
         }
-        if ([System.IO.Path]::GetFileName($archivePath) -match '_v([0-9]+\.[0-9]+\.[0-9]+)\.zip$') {
+        if ([System.IO.Path]::GetFileName($archivePath) -match '[-_]v([0-9]+\.[0-9]+\.[0-9]+)\.zip$') {
             $latestVersion = $Matches[1]
         } else {
             Fail-Update -Message "离线更新包文件名没有版本号。"
@@ -156,7 +156,7 @@ try {
             exit 0
         }
 
-        $archiveName = "AI投研数字员工_Update_v$latestVersion.zip"
+        $archiveName = "ai-investment-employee-update-v$latestVersion.zip"
         $checksumName = "$archiveName.sha256"
         $archiveAsset = Get-Asset -Release $release -Name $archiveName
         $checksumAsset = Get-Asset -Release $release -Name $checksumName

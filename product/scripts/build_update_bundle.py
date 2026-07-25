@@ -19,7 +19,7 @@ PLUGIN_ROOT = INSTALL_ROOT / "codex-plugin-marketplace"
 VERSION = build_delivery.VERSION
 DIST_DIR = PRODUCT_ROOT / "dist"
 PACKAGE_ROOT = "AI投研数字员工_Update"
-ARCHIVE_NAME = f"AI投研数字员工_Update_v{VERSION}.zip"
+ARCHIVE_NAME = f"ai-investment-employee-update-v{VERSION}.zip"
 
 EXCLUDED_PRODUCT_TOP_LEVEL = {
     ".git",

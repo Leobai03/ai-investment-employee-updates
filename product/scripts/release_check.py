@@ -56,7 +56,7 @@ def main() -> int:
     )
     if result.returncode:
         return result.returncode
-    archive = ROOT / "dist" / f"AI投研数字员工_Update_v{version}.zip"
+    archive = ROOT / "dist" / f"ai-investment-employee-update-v{version}.zip"
     checksum = archive.with_suffix(".zip.sha256")
     if not archive.is_file() or not checksum.is_file():
         return fail("更新包或校验文件没有生成。")
@@ -66,4 +66,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

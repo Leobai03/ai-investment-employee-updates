@@ -66,7 +66,7 @@ def prepare(install_root: Path, output_dir: Path, target_version: str) -> Path:
         package_root / "UPDATE_MANIFEST.json",
         json.dumps(manifest, ensure_ascii=False).encode("utf-8"),
     )
-    archive_path = output_dir / f"AI投研数字员工_Update_v{target_version}.zip"
+    archive_path = output_dir / f"ai-investment-employee-update-v{target_version}.zip"
     with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as archive:
         for path in package_root.rglob("*"):
             if path.is_file():

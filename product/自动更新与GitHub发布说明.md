@@ -6,7 +6,7 @@ v0.11.0 开始，Windows 正式版默认每 6 小时检查一次固定 GitHub �
 
 发现新版本后：
 
-1. 下载 `AI投研数字员工_Update_vX.Y.Z.zip` 和对应 `.sha256`；
+1. 下载 `ai-investment-employee-update-vX.Y.Z.zip` 和对应 `.sha256`；
 2. 校验 ZIP 的 SHA-256；
 3. 校验 ZIP 内 `UPDATE_MANIFEST.json` 登记的每个程序文件；
 4. 生成一致性 SQLite 备份和完整老板资料快照；
@@ -80,4 +80,3 @@ product/投研数字员工/backups/update-日期-时间-from-v旧版-to-v新版/
 其中包括程序回滚文件、`ROLLBACK_STATE.json` 和 `老板资料升级前快照.zip`。自动更新成功后不会立即删除这些备份。
 
 自动回滚失败属于必须人工处理的异常。此时不要继续反复覆盖，保留错误日志和升级备份，先停止研究台再恢复。
-
