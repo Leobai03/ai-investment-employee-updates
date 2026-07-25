@@ -9,6 +9,9 @@ on:
 permissions:
   contents: write
 
+env:
+  PYTHONUTF8: "1"
+
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
@@ -46,6 +49,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
+          python codex-plugin-marketplace/plugins/ai-investment-employee/skills/ai-investment-employee/scripts/init_investment_workspace.py --path product
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python product/scripts/build_windows_delivery.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $archive = Get-ChildItem (Join-Path $PWD "product\dist") -Filter "*_Windows*.zip" | Select-Object -First 1
