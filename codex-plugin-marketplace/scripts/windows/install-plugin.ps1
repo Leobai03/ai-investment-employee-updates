@@ -4,16 +4,16 @@ Set-StrictMode -Version 2.0
 $marketplaceRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 
 function Get-CodexCommand {
-    foreach ($name in @("codex.exe", "codex.cmd", "codex")) {
-        $command = Get-Command $name -ErrorAction SilentlyContinue
-        if ($command) {
-            return $command.Source
-        }
-    }
     if ($env:APPDATA) {
         $npmCodex = Join-Path $env:APPDATA "npm\codex.cmd"
         if (Test-Path -LiteralPath $npmCodex) {
             return $npmCodex
+        }
+    }
+    foreach ($name in @("codex.exe", "codex.cmd", "codex")) {
+        $command = Get-Command $name -ErrorAction SilentlyContinue
+        if ($command) {
+            return $command.Source
         }
     }
     return ""

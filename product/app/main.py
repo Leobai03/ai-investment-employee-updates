@@ -3,24 +3,35 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import platform
+import secrets
+import socket
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlencode
 
-from fastapi import FastAPI, Header, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Header, HTTPException, Query, Request
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from .codex_engine import CodexUnavailable
 from .codex_sync import CodexArchiveSync
-from .config import DEMO_MODE, OPENAI_MODEL, PRODUCT_DIR, STATIC_DIR, ensure_runtime_dirs
+from .config import (
+    APP_PORT,
+    DEMO_MODE,
+    LAN_ACCESS_TOKEN,
+    OPENAI_MODEL,
+    PRODUCT_DIR,
+    STATIC_DIR,
+    ensure_runtime_dirs,
+)
 from .data_sources import build_collection_plan
 from .database import (
     add_message,
     add_watchlist,
     attach_job_run_conversation,
     claim_due_job,
+    conversation_has_active_task,
     create_conversation,
     create_database_backup,
     create_job,
@@ -28,6 +39,7 @@ from .database import (
     create_research_task,
     create_hypothesis,
     delete_hypothesis,
+    delete_conversation,
     delete_job,
     delete_report,
     delete_watchlist,
@@ -44,6 +56,7 @@ from .database import (
     get_or_add_watchlist,
     get_watchlist,
     init_db,
+    increment_job_run_attempt,
     list_conversations,
     list_database_backups,
     list_due_jobs,
@@ -112,8 +125,15 @@ research_client = DualResearchClient(api_client=api_research_client)
 codex_archive = CodexArchiveSync(research_client.codex, workspace=PRODUCT_DIR)
 running_jobs: set[int] = set()
 background_tasks: set[asyncio.Task] = set()
+running_research_tasks: dict[str, asyncio.Task] = {}
+conversation_locks: dict[str, asyncio.Lock] = {}
 backup_state: dict[str, str] = {"last_success_at": "", "last_error": ""}
-APP_VERSION = "0.11.2"
+scheduler_state: dict[str, str | bool] = {
+    "running": False,
+    "last_checked_at": "",
+    "last_error": "",
+}
+APP_VERSION = "0.11.3"
 
 
 def _friendly_error(exc: Exception) -> str:
@@ -453,18 +473,29 @@ async def _execute_job(job_id: int, *, scheduled: bool = False) -> dict | None:
                 "engine": job.get("engine", "auto"),
             },
         )
-        report = await _run_research(
-            report_type,
-            title,
-            job["prompt"],
-            prompt,
-            "balanced",
-            conversation_id=conversation["id"],
-            job_run_id=run_id,
-            source="scheduler",
-            engine=job.get("engine", "auto"),
-            watchlist_id=job.get("watchlist_id"),
-        )
+        max_attempts = 2 if scheduled else 1
+        attempt = 1
+        while True:
+            try:
+                report = await _run_research(
+                    report_type,
+                    title,
+                    job["prompt"],
+                    prompt,
+                    "balanced",
+                    conversation_id=conversation["id"],
+                    job_run_id=run_id,
+                    source="scheduler",
+                    engine=job.get("engine", "auto"),
+                    watchlist_id=job.get("watchlist_id"),
+                )
+                break
+            except Exception:
+                if attempt >= max_attempts:
+                    raise
+                attempt += 1
+                increment_job_run_attempt(run_id)
+                await asyncio.sleep(0 if DEMO_MODE else 30)
         add_message(
             conversation["id"],
             "assistant",
@@ -482,35 +513,50 @@ async def _execute_job(job_id: int, *, scheduled: bool = False) -> dict | None:
         return report
     except Exception as exc:
         message = _friendly_error(exc)
-        if conversation:
-            add_message(
-                conversation["id"],
-                "assistant",
-                f"本次任务执行失败：{message}",
-                metadata={"job_id": job_id, "job_run_id": run_id, "error": True},
-            )
         if run_id is not None:
             finish_job_run(run_id, status="failed", error=message)
+        if conversation:
+            delete_conversation(conversation["id"])
         return None
     finally:
         running_jobs.discard(job_id)
 
 
 async def _scheduler() -> None:
-    while True:
-        for job in list_due_jobs():
-            if job["id"] in running_jobs:
-                continue
-            task = asyncio.create_task(_execute_job(job["id"], scheduled=True))
-            background_tasks.add(task)
-            task.add_done_callback(background_tasks.discard)
-        await asyncio.sleep(15)
+    scheduler_state["running"] = True
+    try:
+        while True:
+            try:
+                due_jobs = list_due_jobs()
+                scheduler_state["last_checked_at"] = (
+                    datetime.now().astimezone().isoformat(timespec="seconds")
+                )
+                scheduler_state["last_error"] = ""
+                for job in due_jobs:
+                    if job["id"] in running_jobs:
+                        continue
+                    task = asyncio.create_task(_execute_job(job["id"], scheduled=True))
+                    background_tasks.add(task)
+                    task.add_done_callback(background_tasks.discard)
+            except Exception as exc:
+                scheduler_state["last_error"] = _friendly_error(exc)
+            await asyncio.sleep(15)
+    finally:
+        scheduler_state["running"] = False
 
 
-def _track_background(coro) -> None:
+def _track_background(coro, *, task_id: str | None = None) -> None:
     task = asyncio.create_task(coro)
     background_tasks.add(task)
-    task.add_done_callback(background_tasks.discard)
+    if task_id:
+        running_research_tasks[task_id] = task
+
+    def _cleanup(completed: asyncio.Task) -> None:
+        background_tasks.discard(completed)
+        if task_id and running_research_tasks.get(task_id) is completed:
+            running_research_tasks.pop(task_id, None)
+
+    task.add_done_callback(_cleanup)
 
 
 async def _conversation_reply(
@@ -614,13 +660,18 @@ async def _execute_research_task(task_id: str) -> None:
             engine = request.get("engine", "auto")
             if task_type == "conversation":
                 conversation_id = str(request.get("conversation_id") or "")
-                result = await _conversation_reply(
-                    conversation_id,
-                    content=request.get("content", ""),
-                    use_web=bool(request.get("use_web", True)),
-                    engine=engine,
-                    add_user=False,
-                )
+                lock = conversation_locks.setdefault(conversation_id, asyncio.Lock())
+                async with lock:
+                    latest = get_research_task(task_id)
+                    if latest and latest["status"] == "cancelled":
+                        return
+                    result = await _conversation_reply(
+                        conversation_id,
+                        content=request.get("content", ""),
+                        use_web=bool(request.get("use_web", True)),
+                        engine=engine,
+                        add_user=False,
+                    )
                 finish_research_task(task_id, status="completed")
                 return
             if task_type == "daily":
@@ -704,26 +755,20 @@ async def _execute_research_task(task_id: str) -> None:
             else:
                 raise ValueError(f"不支持的后台研究类型：{task_type}")
         finish_research_task(task_id, status="completed", report_id=report["id"])
+    except asyncio.CancelledError:
+        finish_research_task(task_id, status="cancelled", error="用户已取消。")
+        raise
     except Exception as exc:
         if isinstance(exc, HTTPException):
             message = str(exc.detail)
         else:
             message = _friendly_error(exc)
-        if task and task["task_type"] == "conversation":
-            conversation_id = str(task["request"].get("conversation_id") or "")
-            if conversation_id and get_conversation(conversation_id):
-                add_message(
-                    conversation_id,
-                    "assistant",
-                    f"本次后台对话失败：{message}",
-                    metadata={"error": True, "engine": task["request"].get("engine", "auto")},
-                )
         finish_research_task(task_id, status="failed", error=message)
 
 
 def _enqueue_research(task_type: str, title: str, payload: dict) -> dict:
     task = create_research_task(task_type, title, payload)
-    _track_background(_execute_research_task(task["id"]))
+    _track_background(_execute_research_task(task["id"]), task_id=task["id"])
     return task
 
 
@@ -786,6 +831,57 @@ app = FastAPI(title="天策 AI 投研数字员工", version=APP_VERSION, lifespa
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
+def _is_local_client(host: str | None) -> bool:
+    return host in {"127.0.0.1", "::1", "localhost"} or (host or "").startswith("127.")
+
+
+def _local_lan_ips() -> list[str]:
+    candidates: set[str] = set()
+    try:
+        hostname = socket.gethostname()
+        for item in socket.getaddrinfo(hostname, None, socket.AF_INET):
+            address = item[4][0]
+            if address and not address.startswith("127."):
+                candidates.add(address)
+    except OSError:
+        pass
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            address = sock.getsockname()[0]
+            if address and not address.startswith("127."):
+                candidates.add(address)
+    except OSError:
+        pass
+    return sorted(candidates)
+
+
+@app.middleware("http")
+async def lan_access_guard(request: Request, call_next):
+    if LAN_ACCESS_TOKEN:
+        client_host = request.client.host if request.client else ""
+        if not _is_local_client(client_host):
+            token = request.query_params.get("access_token") or request.cookies.get("ai_research_lan_token")
+            if not secrets.compare_digest(token or "", LAN_ACCESS_TOKEN):
+                return HTMLResponse(
+                    "<!doctype html><meta charset='utf-8'>"
+                    "<title>需要访问令牌</title>"
+                    "<h2>手机访问需要专用链接</h2>"
+                    "<p>请在电脑端打开研究台，使用 /api/lan-access 返回的手机访问地址。</p>",
+                    status_code=401,
+                )
+    response = await call_next(request)
+    if LAN_ACCESS_TOKEN and request.query_params.get("access_token") == LAN_ACCESS_TOKEN:
+        response.set_cookie(
+            "ai_research_lan_token",
+            LAN_ACCESS_TOKEN,
+            httponly=True,
+            samesite="lax",
+            max_age=60 * 60 * 24 * 30,
+        )
+    return response
+
+
 @app.get("/", include_in_schema=False)
 async def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
@@ -821,6 +917,7 @@ async def health() -> dict:
         "codex_archive": codex_archive.status(),
         "active_jobs": sum(1 for job in jobs if job["enabled"]),
         "running_jobs": len(running_jobs),
+        "scheduler": dict(scheduler_state),
         "background_research": {
             "running": sum(
                 1 for task in list_research_tasks(100) if task["status"] in {"queued", "running"}
@@ -831,6 +928,22 @@ async def health() -> dict:
             "latest": backups[0] if backups else None,
             **backup_state,
         },
+    }
+
+
+@app.get("/api/lan-access")
+async def lan_access_get() -> dict:
+    query = urlencode({"access_token": LAN_ACCESS_TOKEN}) if LAN_ACCESS_TOKEN else ""
+    urls = [
+        f"http://{ip}:{APP_PORT}/?{query}" if query else f"http://{ip}:{APP_PORT}/"
+        for ip in _local_lan_ips()
+    ]
+    return {
+        "enabled": bool(LAN_ACCESS_TOKEN),
+        "host": "0.0.0.0",
+        "port": APP_PORT,
+        "local_url": f"http://127.0.0.1:{APP_PORT}/",
+        "urls": urls,
     }
 
 
@@ -1127,6 +1240,15 @@ async def conversation_get(conversation_id: str) -> dict:
     return conversation
 
 
+@app.delete("/api/conversations/{conversation_id}")
+async def conversation_delete(conversation_id: str) -> dict:
+    if conversation_has_active_task(conversation_id):
+        raise HTTPException(status_code=409, detail="这条对话仍有任务在执行，请先等待完成或取消任务。")
+    if not delete_conversation(conversation_id):
+        raise HTTPException(status_code=404, detail="对话不存在。")
+    return {"deleted": True}
+
+
 @app.get("/api/conversations/{conversation_id}/download")
 async def conversation_download(
     conversation_id: str,
@@ -1260,6 +1382,34 @@ async def background_research_item_get(task_id: str) -> dict:
     if not task:
         raise HTTPException(status_code=404, detail="后台任务不存在。")
     return task
+
+
+@app.post("/api/background-research/{task_id}/cancel")
+async def background_research_cancel(task_id: str) -> dict:
+    task = get_research_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="后台任务不存在。")
+    if task["status"] not in {"queued", "running"}:
+        raise HTTPException(status_code=409, detail="这个后台任务已经结束，不能取消。")
+    running = running_research_tasks.get(task_id)
+    if running and not running.done():
+        running.cancel()
+    finish_research_task(task_id, status="cancelled", error="用户已取消。")
+    return get_research_task(task_id) or {"id": task_id, "status": "cancelled"}
+
+
+@app.post("/api/background-research/{task_id}/retry", status_code=202)
+async def background_research_retry(task_id: str) -> dict:
+    task = get_research_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="后台任务不存在。")
+    if task["status"] not in {"failed", "cancelled"}:
+        raise HTTPException(status_code=409, detail="只有失败或已取消的后台任务可以重试。")
+    return _enqueue_research(
+        task["task_type"],
+        f"重试：{task['title']}",
+        dict(task["request"]),
+    )
 
 
 @app.post("/api/background-research/daily", status_code=202)

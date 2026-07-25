@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import sqlite3
 import sys
@@ -48,6 +49,7 @@ def fallback_record(
                 conversation_id TEXT NOT NULL,
                 role TEXT NOT NULL,
                 content TEXT NOT NULL,
+                external_id TEXT NOT NULL DEFAULT '',
                 sources_json TEXT NOT NULL DEFAULT '[]',
                 model TEXT NOT NULL DEFAULT '',
                 metadata_json TEXT NOT NULL DEFAULT '{}',
@@ -55,7 +57,16 @@ def fallback_record(
             );
             """
         )
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(messages)").fetchall()}
+        if "external_id" not in columns:
+            conn.execute("ALTER TABLE messages ADD COLUMN external_id TEXT NOT NULL DEFAULT ''")
+        conn.execute(
+            """CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_external
+               ON messages(external_id) WHERE external_id != ''"""
+        )
         timestamp = now()
+        user_external = _external_id(conversation_id, "user", user_text)
+        assistant_external = _external_id(conversation_id, "assistant", assistant_text)
         conn.execute(
             """INSERT INTO conversations(id, title, source, status, created_at, updated_at)
                VALUES (?, ?, 'codex', 'active', ?, ?)
@@ -64,15 +75,28 @@ def fallback_record(
         )
         conn.execute(
             """INSERT INTO messages(
-                   conversation_id, role, content, sources_json, model, metadata_json, created_at
-               ) VALUES (?, 'user', ?, '[]', '', '{"source":"codex"}', ?)""",
-            (conversation_id, user_text, timestamp),
+                   conversation_id, role, content, external_id, sources_json, model,
+                   metadata_json, created_at
+               ) VALUES (?, 'user', ?, ?, '[]', '', '{"source":"codex"}', ?)
+               ON CONFLICT(external_id) WHERE external_id != '' DO UPDATE SET
+                   content=excluded.content, created_at=excluded.created_at""",
+            (conversation_id, user_text, user_external, timestamp),
         )
         conn.execute(
             """INSERT INTO messages(
-                   conversation_id, role, content, sources_json, model, metadata_json, created_at
-               ) VALUES (?, 'assistant', ?, ?, 'codex', '{"source":"codex"}', ?)""",
-            (conversation_id, assistant_text, json.dumps(sources, ensure_ascii=False), timestamp),
+                   conversation_id, role, content, external_id, sources_json, model,
+                   metadata_json, created_at
+               ) VALUES (?, 'assistant', ?, ?, ?, 'codex', '{"source":"codex"}', ?)
+               ON CONFLICT(external_id) WHERE external_id != '' DO UPDATE SET
+                   content=excluded.content, sources_json=excluded.sources_json,
+                   created_at=excluded.created_at""",
+            (
+                conversation_id,
+                assistant_text,
+                assistant_external,
+                json.dumps(sources, ensure_ascii=False),
+                timestamp,
+            ),
         )
         conn.commit()
     finally:
@@ -98,23 +122,33 @@ def main() -> None:
     if (root / "app" / "database.py").exists():
         sys.path.insert(0, str(root))
         from app.database import (
-            add_message,
             create_conversation,
             init_db,
             sync_memory_files_to_db,
+            upsert_external_message,
         )
 
         init_db()
         sync_memory_files_to_db()
         create_conversation(args.title, source="codex", conversation_id=conversation_id)
-        add_message(conversation_id, "user", user_text, metadata={"source": "codex"})
-        add_message(
+        timestamp = now()
+        upsert_external_message(
+            conversation_id,
+            "user",
+            user_text,
+            external_id=_external_id(conversation_id, "user", user_text),
+            created_at=timestamp,
+            metadata={"source": "codex", "manual_archive": True},
+        )
+        upsert_external_message(
             conversation_id,
             "assistant",
             assistant_text,
+            external_id=_external_id(conversation_id, "assistant", assistant_text),
+            created_at=timestamp,
             sources=sources,
             model="codex",
-            metadata={"source": "codex"},
+            metadata={"source": "codex", "manual_archive": True},
         )
     else:
         fallback_record(
@@ -127,6 +161,11 @@ def main() -> None:
         )
 
     print(conversation_id)
+
+
+def _external_id(conversation_id: str, role: str, content: str) -> str:
+    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()[:20]
+    return f"manual:{conversation_id}:{role}:{digest}"
 
 
 if __name__ == "__main__":

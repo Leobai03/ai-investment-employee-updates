@@ -83,6 +83,12 @@ function Get-CompatiblePython {
 }
 
 function Get-CodexCommand {
+    if ($env:APPDATA) {
+        $npmCodex = Join-Path $env:APPDATA "npm\codex.cmd"
+        if (Test-Path -LiteralPath $npmCodex) {
+            return $npmCodex
+        }
+    }
     $configured = Get-EnvValue -Name "CODEX_BIN"
     if ($configured -and (Test-Path -LiteralPath $configured)) {
         return (Resolve-Path -LiteralPath $configured).Path
@@ -91,12 +97,6 @@ function Get-CodexCommand {
         $command = Get-Command $name -ErrorAction SilentlyContinue
         if ($command) {
             return $command.Source
-        }
-    }
-    if ($env:APPDATA) {
-        $npmCodex = Join-Path $env:APPDATA "npm\codex.cmd"
-        if (Test-Path -LiteralPath $npmCodex) {
-            return $npmCodex
         }
     }
     return ""
@@ -125,8 +125,14 @@ function Ensure-ProductEnvironment {
     if (Test-Path -LiteralPath $fingerprintFile) {
         $installedHash = (Get-Content -LiteralPath $fingerprintFile -Raw).Trim().ToLowerInvariant()
     }
-    & $script:VenvPython -c "import fastapi, uvicorn, openai, docx, reportlab" 2>$null
-    $importsMissing = $LASTEXITCODE -ne 0
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        & $script:VenvPython -c "import fastapi, uvicorn, openai, docx, reportlab" 2>$null
+        $importsMissing = $LASTEXITCODE -ne 0
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
     if ($ForceDependencies -or $importsMissing -or $installedHash -ne $requirementsHash) {
         Write-Host "正在安装产品依赖，首次运行可能需要几分钟……"
         & $script:VenvPython -m pip install --disable-pip-version-check -r $requirements
@@ -214,9 +220,13 @@ function Start-ResearchDesk {
             $env:AI_RESEARCH_DEMO = "0"
             $env:AI_RESEARCH_PORT = "8765"
         }
+        $listenHost = Get-EnvValue -Name "AI_RESEARCH_HOST"
+        if (-not $listenHost) {
+            $listenHost = "127.0.0.1"
+        }
         $process = Start-Process `
             -FilePath $script:VenvPython `
-            -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "$port") `
+            -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", $listenHost, "--port", "$port") `
             -WorkingDirectory $script:ProductRoot `
             -WindowStyle Hidden `
             -RedirectStandardOutput (Join-Path $script:RuntimeDir "$logPrefix.out.log") `

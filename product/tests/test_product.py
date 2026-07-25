@@ -27,6 +27,7 @@ from app.codex_engine import CodexResearchClient  # noqa: E402
 from app.config import codex_app_server_command  # noqa: E402
 from app.codex_sync import CodexArchiveSync  # noqa: E402
 from app.database import (  # noqa: E402
+    add_message,
     claim_due_job,
     connection,
     create_conversation,
@@ -52,7 +53,8 @@ def test_health_and_default_profile() -> None:
         health = client.get("/api/health")
         assert health.status_code == 200
         assert health.json()["demo_mode"] is True
-        assert health.json()["version"] == "0.11.2"
+        assert health.json()["version"] == "0.11.3"
+        assert "scheduler" in health.json()
         assert "platform" in health.json()
         assert set(health.json()["engines"]) == {"default", "codex", "api", "demo"}
         profile = client.get("/api/profile").json()
@@ -60,6 +62,7 @@ def test_health_and_default_profile() -> None:
         assert profile["analysis_framework"].startswith("全球局势")
         assert "不读取微信和通讯录" in profile["privacy_boundaries"]
         assert profile["auto_brief_enabled"] is False
+        assert profile["reference_investors"] == []
         launch = client.get("/api/codex/launch").json()
         assert launch["url"].startswith("codex://new?")
         assert "%24ai-investment-employee" in launch["url"]
@@ -76,9 +79,10 @@ def test_health_and_default_profile() -> None:
         assert safety["output_gate"] is True
         jobs = client.get("/api/jobs").json()
         assert next(job for job in jobs if job["job_type"] == "daily_brief")["enabled"] is True
+        assert all(job["frameworks"] == [] for job in jobs)
         updates = client.get("/api/updates/status")
         assert updates.status_code == 200
-        assert updates.json()["current_version"] == "0.11.2"
+        assert updates.json()["current_version"] == "0.11.3"
         assert updates.json()["repository"]
         assert client.post("/api/updates/install").status_code == 403
 
@@ -104,7 +108,7 @@ def test_conversation_update_phrase_launches_safe_updater(monkeypatch) -> None:
             "state": "available",
             "supported": True,
             "current_version": "0.11.0",
-            "latest_version": "0.11.2",
+            "latest_version": "0.11.3",
             "update_available": True,
         },
     )
@@ -178,7 +182,12 @@ def test_windows_scripts_keep_local_security_boundary() -> None:
         path.read_text(encoding="utf-8")
         for path in sorted((PRODUCT_ROOT / "scripts" / "windows").glob("*.ps1"))
     )
-    assert '--host", "127.0.0.1"' in combined
+    assert "AI_RESEARCH_HOST" in combined
+    assert '$listenHost = "127.0.0.1"' in combined
+    assert "AI_RESEARCH_LAN_TOKEN" in (PRODUCT_ROOT / ".env.example").read_text(encoding="utf-8")
+    main_source = (PRODUCT_ROOT / "app" / "main.py").read_text(encoding="utf-8")
+    assert "lan_access_guard" in main_source
+    assert "ai_research_lan_token" in main_source
     assert "Invoke-Expression" not in combined
     assert "EncodedCommand" not in combined
     assert "Remove-Item -Recurse" not in combined
@@ -762,6 +771,33 @@ def test_conversation_is_persisted_and_searchable() -> None:
         assert searched.status_code == 200
         assert any(item["id"] == conversation_id for item in searched.json())
 
+        markdown_files = list(
+            (TEST_WORKSPACE / "conversations").glob(f"{conversation_id}_*.md")
+        )
+        assert markdown_files
+        deleted = client.delete(f"/api/conversations/{conversation_id}")
+        assert deleted.status_code == 200
+        assert client.get(f"/api/conversations/{conversation_id}").status_code == 404
+        assert not any(path.exists() for path in markdown_files)
+
+
+def test_failed_messages_and_scheduler_windows_stay_out_of_conversations() -> None:
+    with TestClient(app) as client:
+        conversation = create_conversation("失败定时窗口", source="scheduler")
+        add_message(conversation["id"], "user", "执行测试任务")
+        add_message(
+            conversation["id"],
+            "assistant",
+            "本次任务执行失败：网络中断",
+            metadata={"error": True},
+        )
+
+        detail = client.get(f"/api/conversations/{conversation['id']}").json()
+        assert [message["role"] for message in detail["messages"]] == ["user"]
+        rows = client.get("/api/conversations", params={"source": "scheduler"}).json()
+        assert not any(item["id"] == conversation["id"] for item in rows)
+        assert "网络中断" not in build_memory_context("网络中断")
+
 
 def test_scheduled_job_configuration_and_manual_run() -> None:
     with TestClient(app) as client:
@@ -848,6 +884,121 @@ def test_scheduler_claims_once_recovers_interruption_and_keeps_manual_plan() -> 
         assert runs[0]["trigger_type"] == "manual"
         assert runs[1]["trigger_type"] == "scheduled"
         assert runs[1]["attempt_count"] == 2
+
+
+def test_scheduled_job_retries_once_and_removes_final_failure_window(
+    monkeypatch,
+) -> None:
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/jobs",
+            json={
+                "name": "自动重试测试",
+                "job_type": "daily_brief",
+                "frequency": "daily",
+                "interval_minutes": 1440,
+                "time_of_day": "08:00",
+                "weekday": -1,
+                "active_start": "00:00",
+                "active_end": "23:59",
+                "enabled": False,
+                "engine": "auto",
+                "frameworks": [],
+                "prompt": "验证正式调度自动重试",
+            },
+        ).json()
+        job_id = created["id"]
+        due = (datetime.now().astimezone() - timedelta(minutes=1)).isoformat(
+            timespec="seconds"
+        )
+        with connection() as conn:
+            conn.execute(
+                "UPDATE scheduled_jobs SET enabled=1, next_run_at=? WHERE id=?",
+                (due, job_id),
+            )
+
+        original_run = main_module._run_research
+        attempts = 0
+
+        async def fail_once(*args, **kwargs):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise RuntimeError("临时网络错误")
+            return await original_run(*args, **kwargs)
+
+        monkeypatch.setattr(main_module, "_run_research", fail_once)
+        report = asyncio.run(main_module._execute_job(job_id, scheduled=True))
+        assert report is not None
+        assert attempts == 2
+        assert list_job_runs(job_id)[0]["attempt_count"] == 2
+
+        failed = client.post(
+            "/api/jobs",
+            json={
+                "name": "最终失败不进对话",
+                "job_type": "daily_brief",
+                "frequency": "daily",
+                "interval_minutes": 1440,
+                "time_of_day": "08:00",
+                "weekday": -1,
+                "active_start": "00:00",
+                "active_end": "23:59",
+                "enabled": False,
+                "engine": "auto",
+                "frameworks": [],
+                "prompt": "验证失败窗口清理",
+            },
+        ).json()
+        failed_job_id = failed["id"]
+        with connection() as conn:
+            conn.execute(
+                "UPDATE scheduled_jobs SET enabled=1, next_run_at=? WHERE id=?",
+                (due, failed_job_id),
+            )
+
+        async def always_fail(*args, **kwargs):
+            raise RuntimeError("持续网络错误")
+
+        monkeypatch.setattr(main_module, "_run_research", always_fail)
+        assert asyncio.run(
+            main_module._execute_job(failed_job_id, scheduled=True)
+        ) is None
+        failed_run = list_job_runs(failed_job_id)[0]
+        assert failed_run["status"] == "failed"
+        assert failed_run["attempt_count"] == 2
+        conversations = client.get(
+            "/api/conversations", params={"source": "scheduler"}
+        ).json()
+        assert not any("最终失败不进对话" in item["title"] for item in conversations)
+
+
+def test_background_conversation_failure_does_not_add_error_message(
+    monkeypatch,
+) -> None:
+    async def fail_reply(*args, **kwargs):
+        raise RuntimeError("临时失败")
+
+    monkeypatch.setattr(main_module, "_conversation_reply", fail_reply)
+    with TestClient(app) as client:
+        conversation = client.post(
+            "/api/conversations",
+            json={"title": "失败消息不污染连续对话"},
+        ).json()
+        queued = client.post(
+            f"/api/conversations/{conversation['id']}/messages/enqueue",
+            json={"content": "继续研究", "use_web": True, "engine": "auto"},
+        )
+        task_id = queued.json()["id"]
+        task = {}
+        for _ in range(30):
+            task = client.get(f"/api/background-research/{task_id}").json()
+            if task["status"] == "failed":
+                break
+            time.sleep(0.02)
+        assert task["status"] == "failed"
+        detail = client.get(f"/api/conversations/{conversation['id']}").json()
+        assert [message["role"] for message in detail["messages"]] == ["user"]
 
 
 def test_background_research_and_custom_job_crud() -> None:

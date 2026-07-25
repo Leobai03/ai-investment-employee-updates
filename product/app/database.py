@@ -28,7 +28,7 @@ DEFAULT_PROFILE: dict[str, Any] = {
     "reference_markets": ["美股", "日本", "韩国"],
     "focus_sectors": ["科技", "消费"],
     "analysis_framework": "全球局势 → 市场 → 板块 → 公司 → 估值与验证信号",
-    "reference_investors": ["段永平公开方法", "但斌公开方法"],
+    "reference_investors": [],
     "investment_horizon": "长期为主",
     "risk_preference": "稳健，先研究公司，再考虑估值",
     "preferred_metrics": ["商业模式", "管理层", "自由现金流", "ROE", "ROIC", "负债", "PE"],
@@ -53,7 +53,7 @@ DEFAULT_JOBS = [
         "active_end": "23:00",
         "enabled": False,
         "engine": "auto",
-        "frameworks": ["段永平公开方法", "但斌公开方法"],
+        "frameworks": [],
         "prompt": "扫描全球、A股、港股及自选公司的最新重要消息，只汇报新增变化。",
     },
     {
@@ -67,7 +67,7 @@ DEFAULT_JOBS = [
         "active_end": "23:59",
         "enabled": True,
         "engine": "auto",
-        "frameworks": ["段永平公开方法", "但斌公开方法"],
+        "frameworks": [],
         "prompt": "生成全球到A股、港股、板块和自选公司的每日研究简报。",
     },
     {
@@ -81,7 +81,7 @@ DEFAULT_JOBS = [
         "active_end": "23:59",
         "enabled": False,
         "engine": "auto",
-        "frameworks": ["段永平公开方法", "但斌公开方法"],
+        "frameworks": [],
         "prompt": "复盘本周公司基本面、关键假设、反方证据和待核验事项。",
     },
 ]
@@ -400,15 +400,6 @@ def init_db() -> None:
             )
             conn.execute(
                 """UPDATE scheduled_jobs
-                   SET frameworks_json=?, updated_at=?
-                   WHERE frameworks_json='[]'""",
-                (
-                    json.dumps(["段永平公开方法", "但斌公开方法"], ensure_ascii=False),
-                    _now(),
-                ),
-            )
-            conn.execute(
-                """UPDATE scheduled_jobs
                    SET weekday=-1, updated_at=?
                    WHERE frequency IN ('interval', 'daily') AND weekday=0 AND last_run_at=''""",
                 (_now(),),
@@ -417,6 +408,62 @@ def init_db() -> None:
                 "INSERT INTO settings(key, value, updated_at) VALUES (?, ?, ?)",
                 ("v06_defaults_applied", "1", _now()),
             )
+        if not conn.execute(
+            "SELECT 1 FROM settings WHERE key='v0113_public_frameworks_default_off'"
+        ).fetchone():
+            legacy_frameworks = ["段永平公开方法", "但斌公开方法"]
+            conn.execute(
+                """UPDATE scheduled_jobs
+                   SET frameworks_json='[]', updated_at=?
+                   WHERE frameworks_json=?""",
+                (_now(), json.dumps(legacy_frameworks, ensure_ascii=False)),
+            )
+            profile_row = conn.execute(
+                "SELECT value FROM settings WHERE key='profile'"
+            ).fetchone()
+            if profile_row:
+                try:
+                    profile = json.loads(profile_row["value"])
+                except (TypeError, json.JSONDecodeError):
+                    profile = {}
+                if profile.get("reference_investors") == legacy_frameworks:
+                    profile["reference_investors"] = []
+                    conn.execute(
+                        "UPDATE settings SET value=?, updated_at=? WHERE key='profile'",
+                        (json.dumps(profile, ensure_ascii=False), _now()),
+                    )
+            conn.execute(
+                "INSERT INTO settings(key, value, updated_at) VALUES (?, ?, ?)",
+                ("v0113_public_frameworks_default_off", "1", _now()),
+            )
+        conn.execute(
+            """UPDATE scheduled_jobs
+               SET frequency='interval',
+                   interval_minutes=CASE
+                       WHEN interval_minutes IN (60, 120, 240, 720) THEN interval_minutes
+                       ELSE 120
+                   END,
+                   time_of_day='08:00',
+                   weekday=-1,
+                   updated_at=?
+               WHERE job_type='hourly_news'
+                 AND (frequency!='interval'
+                      OR interval_minutes NOT IN (60, 120, 240, 720)
+                      OR weekday!=-1)""",
+            (_now(),),
+        )
+        conn.execute(
+            """UPDATE scheduled_jobs
+               SET frequency=CASE WHEN frequency='weekly' THEN 'weekly' ELSE 'daily' END,
+                   interval_minutes=1440,
+                   weekday=CASE WHEN frequency='weekly' AND weekday BETWEEN 0 AND 6 THEN weekday ELSE -1 END,
+                   updated_at=?
+               WHERE job_type!='hourly_news'
+                 AND (frequency NOT IN ('daily', 'weekly')
+                      OR interval_minutes!=1440
+                      OR (frequency!='weekly' AND weekday!=-1))""",
+            (_now(),),
+        )
         conn.execute(
             """UPDATE research_tasks
                SET status='failed', error='研究台重启，原后台任务已中止，请重新发起。', finished_at=?
@@ -928,13 +975,33 @@ def list_conversations(
 ) -> list[dict[str, Any]]:
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
-    clauses: list[str] = []
+    visible_message = (
+        "COALESCE(json_extract({alias}.metadata_json, '$.error'), 0)=0 "
+        "AND COALESCE(json_extract({alias}.metadata_json, '$.cancelled'), 0)=0"
+    )
+    clauses: list[str] = [
+        """NOT (
+            c.source='scheduler'
+            AND EXISTS (
+                SELECT 1 FROM messages mf
+                WHERE mf.conversation_id=c.id
+                  AND COALESCE(json_extract(mf.metadata_json, '$.error'), 0)=1
+            )
+            AND NOT EXISTS (
+                SELECT 1 FROM messages ms
+                WHERE ms.conversation_id=c.id
+                  AND json_extract(ms.metadata_json, '$.report_id') IS NOT NULL
+            )
+        )"""
+    ]
     values: list[Any] = []
     if query:
         clauses.append(
-            """(c.title LIKE ? OR EXISTS (
+            f"""(c.title LIKE ? OR EXISTS (
                 SELECT 1 FROM messages m2
-                WHERE m2.conversation_id=c.id AND m2.content LIKE ?
+                WHERE m2.conversation_id=c.id
+                  AND {visible_message.format(alias="m2")}
+                  AND m2.content LIKE ?
             ))"""
         )
         needle = f"%{query}%"
@@ -950,11 +1017,13 @@ def list_conversations(
     with connection() as conn:
         rows = conn.execute(
             f"""SELECT c.*,
-                       COUNT(m.id) AS message_count,
+                       COUNT(CASE WHEN {visible_message.format(alias="m")}
+                                  THEN m.id END) AS message_count,
                        COALESCE((
                            SELECT substr(m3.content, 1, 160)
                            FROM messages m3
                            WHERE m3.conversation_id=c.id
+                             AND {visible_message.format(alias="m3")}
                            ORDER BY m3.id DESC LIMIT 1
                        ), '') AS preview
                 FROM conversations c
@@ -984,8 +1053,60 @@ def get_conversation(conversation_id: str) -> dict[str, Any] | None:
             (conversation_id,),
         ).fetchall()
     result = dict(row)
-    result["messages"] = [_message_row(message) for message in messages]
+    parsed_messages = [_message_row(message) for message in messages]
+    result["messages"] = [
+        message
+        for message in parsed_messages
+        if not message["metadata"].get("error")
+        and not message["metadata"].get("cancelled")
+    ]
     return result
+
+
+def conversation_has_active_task(conversation_id: str) -> bool:
+    with connection() as conn:
+        active_run = conn.execute(
+            """SELECT 1 FROM job_runs
+               WHERE status='running' AND conversation_id=? LIMIT 1""",
+            (conversation_id,),
+        ).fetchone()
+        if active_run:
+            return True
+        rows = conn.execute(
+            """SELECT request_json FROM research_tasks
+               WHERE status IN ('queued', 'running') AND task_type='conversation'"""
+        ).fetchall()
+    for row in rows:
+        try:
+            request = json.loads(row["request_json"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if str(request.get("conversation_id") or "") == conversation_id:
+            return True
+    return False
+
+
+def delete_conversation(conversation_id: str) -> bool:
+    with connection() as conn:
+        conn.execute(
+            "UPDATE job_runs SET conversation_id=NULL WHERE conversation_id=?",
+            (conversation_id,),
+        )
+        cursor = conn.execute(
+            "DELETE FROM conversations WHERE id=?",
+            (conversation_id,),
+        )
+    if cursor.rowcount < 1:
+        return False
+    root = CONVERSATIONS_DIR.resolve()
+    for path in CONVERSATIONS_DIR.glob(f"{conversation_id}_*.md"):
+        try:
+            resolved = path.resolve()
+            if root in resolved.parents:
+                resolved.unlink(missing_ok=True)
+        except OSError:
+            continue
+    return True
 
 
 def _export_conversation(conversation_id: str) -> Path | None:
@@ -1055,6 +1176,8 @@ def memory_counts() -> dict[str, Any]:
         latest = conn.execute(
             """SELECT m.role, m.content, m.created_at, c.source
                FROM messages m JOIN conversations c ON c.id=m.conversation_id
+               WHERE COALESCE(json_extract(m.metadata_json, '$.error'), 0)=0
+                 AND COALESCE(json_extract(m.metadata_json, '$.cancelled'), 0)=0
                ORDER BY m.id DESC LIMIT 6"""
         ).fetchall()
     result = dict(totals)
@@ -1072,11 +1195,29 @@ def memory_candidates(
 
     limit = max(20, min(limit, 2000))
     search_terms = [term for term in (terms or []) if term][:12]
+    visible_archive = """
+        COALESCE(json_extract(m.metadata_json, '$.error'), 0)=0
+        AND COALESCE(json_extract(m.metadata_json, '$.cancelled'), 0)=0
+        AND NOT (
+            c.source='scheduler'
+            AND EXISTS (
+                SELECT 1 FROM messages mf
+                WHERE mf.conversation_id=c.id
+                  AND COALESCE(json_extract(mf.metadata_json, '$.error'), 0)=1
+            )
+            AND NOT EXISTS (
+                SELECT 1 FROM messages ms
+                WHERE ms.conversation_id=c.id
+                  AND json_extract(ms.metadata_json, '$.report_id') IS NOT NULL
+            )
+        )
+    """
     with connection() as conn:
         recent_messages = conn.execute(
-            """SELECT 'message' AS kind, m.id, m.role, m.content, m.created_at,
+            f"""SELECT 'message' AS kind, m.id, m.role, m.content, m.created_at,
                       c.source, c.title
                FROM messages m JOIN conversations c ON c.id=m.conversation_id
+               WHERE {visible_archive}
                ORDER BY m.id DESC LIMIT ?""",
             (min(limit // 5, 120),),
         ).fetchall()
@@ -1093,10 +1234,10 @@ def memory_candidates(
             report_where = " OR ".join("(content LIKE ? OR title LIKE ?)" for _ in search_terms)
             values = [value for term in search_terms for value in (f"%{term}%", f"%{term}%")]
             matched_messages = conn.execute(
-                f"""SELECT 'message' AS kind, m.id, m.role, m.content, m.created_at,
+                    f"""SELECT 'message' AS kind, m.id, m.role, m.content, m.created_at,
                            c.source, c.title
                     FROM messages m JOIN conversations c ON c.id=m.conversation_id
-                    WHERE {message_where}
+                    WHERE {visible_archive} AND ({message_where})
                     ORDER BY m.id DESC LIMIT ?""",
                 [*values, limit],
             ).fetchall()
@@ -1693,6 +1834,14 @@ def attach_job_run_conversation(run_id: int, conversation_id: str) -> None:
         conn.execute(
             "UPDATE job_runs SET conversation_id=? WHERE id=?",
             (conversation_id, run_id),
+        )
+
+
+def increment_job_run_attempt(run_id: int) -> None:
+    with connection() as conn:
+        conn.execute(
+            "UPDATE job_runs SET attempt_count=attempt_count+1 WHERE id=?",
+            (run_id,),
         )
 
 

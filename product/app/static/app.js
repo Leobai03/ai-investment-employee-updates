@@ -54,6 +54,12 @@ const jobStatusNames = {
 };
 const engineNames = { auto: "Codex 订阅优先", codex: "Codex 订阅", api: "OpenAI API", demo: "演示" };
 const weekdayNames = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+const newsIntervalOptions = [
+  [60, "每 1 小时"],
+  [120, "每 2 小时"],
+  [240, "每 4 小时"],
+  [720, "每 12 小时"],
+];
 const jobTypeNames = {
   hourly_news: "消息面扫描",
   daily_brief: "市场简报",
@@ -312,14 +318,23 @@ function renderFrameworks() {
         <span class="framework-badge">公开方法</span>
       </div>
       <p class="framework-summary">${escapeHtml(framework.summary)}</p>
+      <h4>理论核心</h4>
+      <ul>${(framework.principles || []).map((principle) => `<li>${escapeHtml(principle)}</li>`).join("")}</ul>
       <h4>系统会多问这几句</h4>
       <ol>${framework.questions.map((question) => `<li>${escapeHtml(question)}</li>`).join("")}</ol>
+      <h4>相关书目与知识边界</h4>
+      <div class="framework-reading">${(framework.reading || []).map((item) => `
+        <div>
+          <strong>${escapeHtml(item.title)}</strong>
+          <span>${escapeHtml(item.author)} · ${escapeHtml(item.note)}</span>
+          <small>${escapeHtml(item.copyright)}</small>
+        </div>`).join("")}</div>
       <h4>公开材料</h4>
-      <div class="framework-sources">${framework.sources.map((source) => `
+      <div class="framework-sources">${framework.sources.length ? framework.sources.map((source) => `
         <a href="${escapeHtml(source.url)}" target="_blank" rel="noopener noreferrer">
           <strong>${escapeHtml(source.title)}</strong>
           <span>${escapeHtml(source.publisher)} · ${escapeHtml(source.note)}</span>
-        </a>`).join("")}</div>
+        </a>`).join("") : `<div class="framework-source-pending">一手出处仍在核验，暂不展示未经证实的链接。</div>`}</div>
       <div class="framework-disclaimer">根据公开材料提炼，不代表本人对当前事件的真实看法，不构成投资建议。</div>
     </article>`).join("");
 }
@@ -669,13 +684,19 @@ function renderConversationList() {
     container.innerHTML = `<div class="conversation-empty">还没有符合条件的对话。</div>`;
   } else {
     container.innerHTML = state.conversations.map((item) => `
-      <button class="conversation-row ${state.currentConversation?.id === item.id ? "active" : ""}" data-conversation-id="${item.id}">
-        <span class="conversation-row-top"><strong>${escapeHtml(item.title)}</strong><i>${sourceNames[item.source] || item.source}</i></span>
-        <span class="conversation-preview">${escapeHtml(plainSnippet(item.preview, 54) || "尚无消息")}</span>
-        <span class="conversation-meta">${formatDate(item.updated_at)} · ${item.message_count} 条</span>
-      </button>`).join("");
+      <div class="conversation-row ${state.currentConversation?.id === item.id ? "active" : ""}">
+        <button class="conversation-open" data-conversation-id="${item.id}">
+          <span class="conversation-row-top"><strong>${escapeHtml(item.title)}</strong><i>${sourceNames[item.source] || item.source}</i></span>
+          <span class="conversation-preview">${escapeHtml(plainSnippet(item.preview, 54) || "尚无消息")}</span>
+          <span class="conversation-meta">${formatDate(item.updated_at)} · ${item.message_count} 条</span>
+        </button>
+        <button class="conversation-delete" data-delete-conversation="${item.id}" title="删除对话">删除</button>
+      </div>`).join("");
     $$("[data-conversation-id]", container).forEach((button) =>
       button.addEventListener("click", () => openConversation(button.dataset.conversationId))
+    );
+    $$("[data-delete-conversation]", container).forEach((button) =>
+      button.addEventListener("click", () => deleteConversationRecord(button.dataset.deleteConversation))
     );
   }
   $("#loadMoreConversations").classList.toggle("hidden", !state.conversationHasMore);
@@ -687,10 +708,12 @@ function renderConversation() {
     $("#chatTitle").textContent = "新对话";
     $("#chatSource").textContent = "网页对话";
     $("#chatMessages").innerHTML = welcomeHtml();
+    $("#deleteConversation").disabled = true;
     return;
   }
   $("#chatTitle").textContent = conversation.title;
   $("#chatSource").textContent = sourceNames[conversation.source] || conversation.source;
+  $("#deleteConversation").disabled = false;
   $("#chatMessages").innerHTML = conversationThreadHtml(conversation, true);
   const area = $("#chatMessages");
   requestAnimationFrame(() => { area.scrollTop = area.scrollHeight; });
@@ -709,8 +732,9 @@ function conversationThreadHtml(conversation, showWelcome = false) {
         ${renderMessageSources(message.sources || [])}
       </div>
     </article>`).join("");
-  return html + (conversationPending(conversation.id)
-    ? `<div class="chat-pending">这条回复正在后台研究。你可以离开本页继续做其他事情，完成后会自动出现。</div>`
+  const pendingCount = conversationPendingCount(conversation.id);
+  return html + (pendingCount
+    ? `<div class="chat-pending">这条对话还有 ${pendingCount} 条后台回复在排队或生成。你可以继续发送下一条，也可以在右下角后台任务里取消。</div>`
     : "");
 }
 
@@ -720,6 +744,14 @@ function conversationPending(conversationId) {
     && task.task_type === "conversation"
     && task.request?.conversation_id === conversationId
   );
+}
+
+function conversationPendingCount(conversationId) {
+  return state.backgroundTasks.filter((task) =>
+    ["queued", "running"].includes(task.status)
+    && task.task_type === "conversation"
+    && task.request?.conversation_id === conversationId
+  ).length;
 }
 
 function welcomeHtml() {
@@ -786,6 +818,26 @@ async function openConversation(id) {
   } catch (error) { toast(error.message, "error"); }
 }
 
+async function deleteConversationRecord(conversationId) {
+  if (!confirm("确认删除这条连续对话？本机对应的对话 Markdown 也会一起删除。")) return;
+  try {
+    await api(`/api/conversations/${encodeURIComponent(conversationId)}`, { method: "DELETE" });
+    const deletedCurrent = state.currentConversation?.id === conversationId;
+    if (deletedCurrent) state.currentConversation = null;
+    if (state.companyConversation?.id === conversationId) state.companyConversation = null;
+    await refreshConversations(true);
+    if (deletedCurrent && state.conversations.length) {
+      await openConversation(state.conversations[0].id);
+    } else {
+      renderConversation();
+    }
+    if (state.currentCompany) await refreshCompanyWorkspace();
+    toast("连续对话已删除");
+  } catch (error) {
+    toast(error.message, "error");
+  }
+}
+
 function renderJobs() {
   const grid = $("#taskGrid");
   $("#taskCountText").textContent = `${state.jobs.length} 个`;
@@ -816,29 +868,27 @@ function renderJobs() {
           <option value="weekly_review" ${job.job_type === "weekly_review" ? "selected" : ""}>基本面复盘</option>
           <option value="company_tracking" ${job.job_type === "company_tracking" ? "selected" : ""}>公司持续跟踪</option>
         </select></label>
-        <label>频率<select name="frequency">
-          <option value="interval" ${job.frequency === "interval" ? "selected" : ""}>每隔一段时间</option>
-          <option value="daily" ${job.frequency === "daily" ? "selected" : ""}>每天</option>
-          <option value="weekly" ${job.frequency === "weekly" ? "selected" : ""}>每周</option>
-          <option value="monthly" ${job.frequency === "monthly" ? "selected" : ""}>每月</option>
-          <option value="yearly" ${job.frequency === "yearly" ? "selected" : ""}>每年</option>
-        </select></label>
-        <label>运行间隔<select name="interval_minutes">
-          ${[60, 120, 240, 720, 1440].map((minutes) =>
-            `<option value="${minutes}" ${job.interval_minutes === minutes ? "selected" : ""}>${
-              minutes < 1440 ? `每 ${minutes / 60} 小时` : "每 24 小时"
-            }</option>`).join("")}
-        </select></label>
-        <label>固定时间<input type="time" name="time_of_day" value="${job.time_of_day}"></label>
-        <label>哪一天<select name="weekday">
-          <option value="-1" ${job.weekday === -1 ? "selected" : ""}>每天</option>
-          ${weekdayNames.map((name, index) =>
-          `<option value="${index}" ${job.weekday === index ? "selected" : ""}>${name}</option>`
-        ).join("")}</select></label>
-        <label>每月几号<input type="number" name="day_of_month" min="1" max="28" value="${job.day_of_month || 1}"></label>
-        <label>每年几月<input type="number" name="month_of_year" min="1" max="12" value="${job.month_of_year || 1}"></label>
-        <label>活跃开始<input type="time" name="active_start" value="${job.active_start}"></label>
-        <label>活跃结束<input type="time" name="active_end" value="${job.active_end}"></label>
+        ${job.job_type === "hourly_news" ? `
+          <label>每隔多久<select name="interval_minutes">
+            ${newsIntervalOptions.map(([value, label]) =>
+              `<option value="${value}" ${Number(job.interval_minutes) === value ? "selected" : ""}>${label}</option>`
+            ).join("")}
+          </select></label>
+          <input type="hidden" name="frequency" value="interval">
+          <input type="hidden" name="time_of_day" value="08:00">
+          <input type="hidden" name="weekday" value="-1">
+        ` : `
+          <label>频率<select name="frequency">
+            <option value="daily" ${job.frequency !== "weekly" ? "selected" : ""}>每天</option>
+            <option value="weekly" ${job.frequency === "weekly" ? "selected" : ""}>每周</option>
+          </select></label>
+          <label>执行时间<input type="time" name="time_of_day" value="${job.time_of_day}"></label>
+          <label>执行日<select name="weekday">
+            <option value="-1" ${job.weekday === -1 ? "selected" : ""}>每天</option>
+            ${weekdayNames.map((name, index) =>
+            `<option value="${index}" ${job.weekday === index ? "selected" : ""}>${name}</option>`
+          ).join("")}</select></label>
+        `}
         <label>研究引擎<select name="engine">
           <option value="auto" ${job.engine === "auto" ? "selected" : ""}>Codex 订阅优先（默认）</option>
           <option value="codex" ${job.engine === "codex" ? "selected" : ""}>Codex 订阅</option>
@@ -873,23 +923,39 @@ function renderJobs() {
 
 function jobPayload(form) {
   const data = new FormData(form);
+  const jobType = data.get("job_type");
+  const frequency = jobType === "hourly_news" ? "interval" : (data.get("frequency") === "weekly" ? "weekly" : "daily");
+  const selectedWeekday = Number(data.get("weekday"));
+  const intervalMinutes = Number(data.get("interval_minutes") || 60);
   return {
     name: data.get("name"),
-    job_type: data.get("job_type"),
-    frequency: data.get("frequency"),
-    interval_minutes: Number(data.get("interval_minutes")),
-    time_of_day: data.get("time_of_day"),
-    weekday: Number(data.get("weekday")),
-    day_of_month: Number(data.get("day_of_month") || 1),
-    month_of_year: Number(data.get("month_of_year") || 1),
-    active_start: data.get("active_start"),
-    active_end: data.get("active_end"),
+    job_type: jobType,
+    frequency,
+    interval_minutes: jobType === "hourly_news" ? intervalMinutes : 1440,
+    time_of_day: data.get("time_of_day") || "08:00",
+    weekday: jobType === "hourly_news" || frequency === "daily" ? -1 : (selectedWeekday >= 0 ? selectedWeekday : 0),
+    day_of_month: 1,
+    month_of_year: 1,
+    active_start: "00:00",
+    active_end: "23:59",
     enabled: data.get("enabled") === "on",
     engine: data.get("engine") || "auto",
     frameworks: data.getAll("frameworks"),
     watchlist_id: data.get("watchlist_id") ? Number(data.get("watchlist_id")) : null,
     prompt: data.get("prompt"),
   };
+}
+
+function updateNewJobScheduleControls() {
+  const jobType = $("#newJobType")?.value;
+  const isNewsScan = jobType === "hourly_news";
+  $("#newIntervalField")?.classList.toggle("hidden", !isNewsScan);
+  $("#newFrequencyField")?.classList.toggle("hidden", isNewsScan);
+  $("#newTimeField")?.classList.toggle("hidden", isNewsScan);
+  $("#newWeekdayField")?.classList.toggle("hidden", isNewsScan);
+  if (isNewsScan) {
+    $("#newJobFrequency").value = "daily";
+  }
 }
 
 async function saveJobForm(event) {
@@ -974,22 +1040,48 @@ function renderBackgroundTasks() {
   }
   list.innerHTML = state.backgroundTasks.map((task) => `
     <article class="background-task-row ${task.status}">
-      <span class="task-state-icon">${task.status === "completed" ? "✓" : task.status === "failed" ? "!" : "…"}</span>
+      <span class="task-state-icon">${
+        task.status === "completed" ? "✓" :
+        task.status === "failed" ? "!" :
+        task.status === "cancelled" ? "×" : "…"
+      }</span>
       <div>
         <strong>${escapeHtml(task.title)}</strong>
         <small>${
           task.status === "queued" ? "排队中" :
           task.status === "running" ? "正在查资料、核验并归档" :
           task.status === "completed" ? `已完成 · ${formatDate(task.finished_at)}` :
+          task.status === "cancelled" ? "已取消" :
           `失败 · ${escapeHtml(task.error || "未知错误")}`
         }</small>
       </div>
+      ${["queued", "running"].includes(task.status) ? `<button data-cancel-task="${task.id}">取消</button>` : ""}
+      ${["failed", "cancelled"].includes(task.status) ? `<button data-retry-task="${task.id}">重试</button>` : ""}
       ${task.report_id ? `<button data-open-task-report="${task.report_id}">查看报告</button>` : ""}
     </article>`).join("");
   $$("[data-open-task-report]", list).forEach((button) => button.addEventListener("click", () => {
     openReport(Number(button.dataset.openTaskReport));
     $("#backgroundDrawer").classList.add("hidden");
   }));
+  $$("[data-cancel-task]", list).forEach((button) => button.addEventListener("click", () => cancelBackgroundTask(button.dataset.cancelTask)));
+  $$("[data-retry-task]", list).forEach((button) => button.addEventListener("click", () => retryBackgroundTask(button.dataset.retryTask)));
+}
+
+async function cancelBackgroundTask(taskId) {
+  try {
+    await api(`/api/background-research/${encodeURIComponent(taskId)}/cancel`, { method: "POST" });
+    await refreshBackgroundTasks(false);
+    toast("后台任务已取消");
+  } catch (error) { toast(error.message, "error"); }
+}
+
+async function retryBackgroundTask(taskId) {
+  try {
+    const task = await api(`/api/background-research/${encodeURIComponent(taskId)}/retry`, { method: "POST" });
+    await refreshBackgroundTasks(false);
+    openBackgroundDrawer();
+    toast(`已重新排队：${task.title}`);
+  } catch (error) { toast(error.message, "error"); }
 }
 
 async function refreshBackgroundTasks(notify = true) {
@@ -1058,7 +1150,6 @@ async function runResearch(path, body, title) {
 
 async function sendConversationInBackground(conversationId, content, engine, useWeb) {
   if (!conversationId) throw new Error("请先新建或选择一条对话。");
-  if (conversationPending(conversationId)) throw new Error("这条对话的上一条回复还在后台生成，请稍后再发。");
   const task = await api(`/api/conversations/${encodeURIComponent(conversationId)}/messages/enqueue`, {
     method: "POST",
     body: JSON.stringify({ content, engine, use_web: useWeb }),
@@ -1075,7 +1166,7 @@ async function sendConversationInBackground(conversationId, content, engine, use
     renderCompanyConversation();
   }
   await refreshConversations(true);
-  toast("消息已交给后台研究，你可以继续操作其他页面");
+  toast("消息已排队，你可以继续发送下一条");
   return task;
 }
 
@@ -1366,6 +1457,8 @@ function bindEvents() {
   });
   $("#backgroundTaskButton").addEventListener("click", openBackgroundDrawer);
   $("#closeBackgroundDrawer").addEventListener("click", () => $("#backgroundDrawer").classList.add("hidden"));
+  $("#newJobType")?.addEventListener("change", updateNewJobScheduleControls);
+  updateNewJobScheduleControls();
   $("#taskBuilder").addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
@@ -1380,6 +1473,9 @@ function bindEvents() {
   $("#downloadConversation").addEventListener("click", () => {
     if (!state.currentConversation) return toast("请先选择一条对话", "error");
     downloadConversationFile(state.currentConversation.id, $("#conversationExportFormat").value);
+  });
+  $("#deleteConversation").addEventListener("click", () => {
+    if (state.currentConversation) deleteConversationRecord(state.currentConversation.id);
   });
   $("#openCodex").addEventListener("click", async () => {
     try {
