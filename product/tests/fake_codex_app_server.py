@@ -8,8 +8,10 @@ list_cwd = ""
 
 
 def send(message: dict) -> None:
-    sys.stdout.write(json.dumps(message, ensure_ascii=False) + "\n")
-    sys.stdout.flush()
+    sys.stdout.buffer.write(
+        (json.dumps(message, ensure_ascii=False) + "\n").encode("utf-8")
+    )
+    sys.stdout.buffer.flush()
 
 
 for raw_line in sys.stdin:

@@ -81,6 +81,13 @@ def test_health_and_default_profile() -> None:
         assert updates.json()["current_version"] == "0.11.0"
         assert updates.json()["repository"]
         assert client.post("/api/updates/install").status_code == 403
+
+
+def test_update_install_is_blocked_outside_windows(monkeypatch) -> None:
+    import app.update_service as update_service
+
+    monkeypatch.setattr(update_service.platform, "system", lambda: "Darwin")
+    with TestClient(app) as client:
         unsupported = client.post(
             "/api/updates/install",
             headers={"X-AI-Research-Action": "install-update"},
